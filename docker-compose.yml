@@ -1,0 +1,15 @@
+# Servicios de desarrollo: docker compose up -d
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: drivly
+      POSTGRES_USER: drivly
+      POSTGRES_PASSWORD: drivly
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+volumes:
+  pgdata:

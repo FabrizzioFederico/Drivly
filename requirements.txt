@@ -1,0 +1,12 @@
+# Producción. Después de instalar, fijar versiones exactas con: pip freeze > requirements.lock
+Django>=6.1.1,<6.2
+djangorestframework
+djangorestframework-simplejwt
+django-cors-headers
+django-environ
+psycopg[binary]>=3.2
+google-auth          # validar el ID token de Google OAuth
+mercadopago          # SDK oficial de Mercado Pago
+celery[redis]
+requests
+gunicorn
