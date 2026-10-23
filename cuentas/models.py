@@ -56,6 +56,8 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         related_name="playeros",
         help_text="Sólo para playeros.",
     )
+    # Regla 3: veces que un playero corrigió una categoría declarada. Con 2 ya no puede declarar.
+    correcciones_categoria = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
@@ -90,3 +92,9 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     @property
     def es_playero(self):
         return self.rol == Rol.PLAYERO
+
+    MAX_CORRECCIONES_CATEGORIA = 2
+
+    @property
+    def puede_declarar_categoria(self):
+        return self.correcciones_categoria < self.MAX_CORRECCIONES_CATEGORIA
