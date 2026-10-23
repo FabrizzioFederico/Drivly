@@ -15,4 +15,5 @@ urlpatterns = [
     path("api/auth/", include("cuentas.urls")),
     path("api/", include(router.urls)),
     path("api/", include("reservas.urls")),
+    path("api/pagos/", include("pagos.urls")),
 ]

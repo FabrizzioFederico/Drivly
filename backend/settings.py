@@ -144,6 +144,8 @@ DRIVLY_OVERSTAY_PROYECCION = timedelta(minutes=env.int("OVERSTAY_PROYECCION_MIN"
 GOOGLE_OAUTH_CLIENT_IDS = env.list("GOOGLE_OAUTH_CLIENT_IDS", default=[])  # web + Android
 MERCADOPAGO_ACCESS_TOKEN = env("MERCADOPAGO_ACCESS_TOKEN", default="")
 MERCADOPAGO_WEBHOOK_SECRET = env("MERCADOPAGO_WEBHOOK_SECRET", default="")
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
+BACKEND_URL  = env("BACKEND_URL",  default="http://localhost:8000")
 DATACAR_API_URL = env("DATACAR_API_URL", default="")
 DATACAR_API_KEY = env("DATACAR_API_KEY", default="")
 DATACAR_MOCK = env.bool("DATACAR_MOCK", default=DEBUG)  # simulador mientras no haya credenciales

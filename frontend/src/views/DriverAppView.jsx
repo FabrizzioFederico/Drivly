@@ -270,8 +270,20 @@ function HoldStep({ garaje, horario, modalidad, vehiculo, setVehiculo, onBack, o
 
   const pagar = async () => {
     setBusy(true); setError(null);
-    try { onConfirmed(await reservasService.pagar(reserva.id)); }
-    catch (e) { setError(e.message); } finally { setBusy(false); }
+    try {
+      const result = await reservasService.pagar(reserva.id);
+      if (result.init_point) {
+        // Checkout Pro: redirigir al pago en Mercado Pago
+        // No hacemos setBusy(false) porque navegamos fuera de la app
+        window.location.href = result.init_point;
+        return;
+      }
+      // Modo PAGOS_SIMULADOS: la reserva ya viene confirmada
+      onConfirmed(result);
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
   };
 
   const volver = async () => {
@@ -340,8 +352,8 @@ function HoldStep({ garaje, horario, modalidad, vehiculo, setVehiculo, onBack, o
 
       <footer className="flex shrink-0 flex-col gap-2 border-t border-ink-soft bg-white px-4 pb-6 pt-3">
         {reserva ? (
-          <button onClick={pagar} disabled={busy} className="btn-action min-h-[56px] text-[17px]">
-            {busy ? 'Procesando pago…' : `Pagar ${ars(reserva.total)}`}
+          <button onClick={pagar} disabled={busy} data-mp-checkout-cta="checkout-pro" className="btn-action min-h-[56px] text-[17px]">
+            {busy ? 'Redirigiendo a Mercado Pago…' : `Pagar ${ars(reserva.total)} con Mercado Pago`}
           </button>
         ) : (
           <button onClick={crearHold} disabled={busy || !vehiculo} className="btn-primary min-h-[56px] text-[17px]">
@@ -450,6 +462,30 @@ export default function DriverAppView() {
   const [horario, setHorario] = useState(defaultHorario);
   const [modalidad, setModalidad] = useState('HORA');
   const [vehiculo, setVehiculo] = useState(null); // se conserva si cambia de garaje
+
+  // Manejo del retorno desde Mercado Pago (Checkout Pro back_url)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mpStatus    = params.get('collection_status') || params.get('mp_status');
+    const externalRef = params.get('external_reference');
+    if (!externalRef) return;
+
+    // Limpiar la URL — nunca confiar solo en los query params
+    window.history.replaceState({}, '', '/');
+
+    if (mpStatus === 'approved') {
+      reservasService.get(externalRef)
+        .then((r) => {
+          if (r.estado === 'CONFIRMADA' || r.estado === 'EN_CURSO') {
+            setReserva(r);
+            setStep('ticket');
+          }
+          // Si el estado sigue siendo HOLD, el webhook todavía no llegó.
+          // El usuario puede recargar en unos segundos.
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   const elegirGaraje = (g) => { setGaraje(g); setStep('hold'); };
 

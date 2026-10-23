@@ -1,5 +1,6 @@
 # Secretos y datos locales
 .env
+.mp-integrate-progress.md
 db.sqlite3
 # Python
 __pycache__/

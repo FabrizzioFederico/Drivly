@@ -63,14 +63,18 @@ class ReservaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
     @action(detail=True, methods=["post"])
     def pagar(self, request, pk=None):
         """
-        Sprint 2: con PAGOS_SIMULADOS=True confirma sin Mercado Pago, para probar el flujo completo.
-        Sprint 3 lo reemplaza por la preferencia de Mercado Pago y el webhook.
+        Sprint 3: crea preferencia Checkout Pro y devuelve init_point.
+        El frontend redirige al usuario al pago en Mercado Pago.
+        Con PAGOS_SIMULADOS=True confirma directamente (desarrollo sin credenciales MP).
         """
         reserva = self._mia()
-        if not settings.DRIVLY_PAGOS_SIMULADOS:
-            return Response({"detail": "El pago con Mercado Pago todavía no está integrado."},
-                            status=status.HTTP_501_NOT_IMPLEMENTED)
-        return Response(ReservaSerializer(services.confirmar_pago(reserva.id)).data)
+
+        if settings.DRIVLY_PAGOS_SIMULADOS:
+            return Response(ReservaSerializer(services.confirmar_pago(reserva.id)).data)
+
+        from pagos.services import crear_preferencia
+        init_point = crear_preferencia(reserva)
+        return Response({"init_point": init_point})
 
     @action(detail=True, methods=["get"])
     def qr(self, request, pk=None):
