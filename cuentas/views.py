@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from .models import Usuario
 from .serializers import GoogleLoginSerializer, UsuarioSerializer
 from .services import usuario_desde_google, verificar_token_google
 
@@ -15,7 +16,7 @@ def tokens_para(usuario):
 
 
 class GoogleLoginView(APIView):
-    """POST /api/auth/google/  {id_token, rol?} -> {access, refresh, usuario}"""
+    """POST /api/auth/google/  {id_token, rol?} -> {access, refresh, user}"""
 
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -26,7 +27,31 @@ class GoogleLoginView(APIView):
         info = verificar_token_google(datos.validated_data["id_token"])
         usuario = usuario_desde_google(info, datos.validated_data.get("rol"))
         return Response(
-            {**tokens_para(usuario), "usuario": UsuarioSerializer(usuario).data},
+            {**tokens_para(usuario), "user": UsuarioSerializer(usuario).data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class DevLoginView(APIView):
+    """
+    POST /api/auth/dev-login/ — solo disponible con DEBUG=True.
+    Crea o recupera un conductor de prueba sin necesitar Google OAuth.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        from django.conf import settings
+        if not settings.DEBUG:
+            return Response({"detail": "Not available in production."}, status=status.HTTP_403_FORBIDDEN)
+
+        usuario, _ = Usuario.objects.get_or_create(
+            email="dev@drivly.local",
+            defaults={"nombre": "Dev Conductor", "rol": "CONDUCTOR"},
+        )
+        return Response(
+            {**tokens_para(usuario), "user": UsuarioSerializer(usuario).data},
             status=status.HTTP_200_OK,
         )
 

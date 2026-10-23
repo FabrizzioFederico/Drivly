@@ -6,12 +6,19 @@ const USER_KEY = 'drivly.user';
 export const authService = {
   /** POST /auth/google/ { id_token } -> { access, refresh, user } */
   async loginWithGoogle(idToken) {
-    const data = USE_MOCKS
-      ? await mocks.loginWithGoogle(idToken)
-      : (await client.post('/auth/google/', { id_token: idToken })).data;
+    let data;
+    if (USE_MOCKS) {
+      data = await mocks.loginWithGoogle(idToken);
+    } else if (idToken === 'demo') {
+      // Dev mode sin Google OAuth: usa el endpoint de desarrollo (solo DEBUG=True)
+      data = (await client.post('/auth/dev-login/')).data;
+    } else {
+      data = (await client.post('/auth/google/', { id_token: idToken })).data;
+    }
     tokenStore.set(data.access, data.refresh);
-    if (data.user) localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-    return data.user;
+    const user = data.user ?? data.usuario;
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    return user;
   },
 
   /** POST /auth/refresh/ { refresh } -> { access } (lo usa también el interceptor) */

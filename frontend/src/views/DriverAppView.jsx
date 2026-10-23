@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { QRCodeSVG } from 'qrcode.react';
 import { garajesService } from '../api/garajesService';
 import { reservasService } from '../api/reservasService';
@@ -43,6 +46,45 @@ function ModalidadSelector({ value, onChange, disabled }) {
   );
 }
 
+// Marker de posición del usuario
+const USER_ICON = L.divIcon({
+  className: '',
+  html: '<div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(79,128,226,0.2);"><div style="width:16px;height:16px;border-radius:50%;background:#4f80e2;border:3px solid white;box-shadow:0 0 0 3px rgba(79,128,226,0.3);"></div></div>',
+  iconSize: [40, 40],
+  iconAnchor: [20, 20],
+});
+
+// Badge de precio sobre el mapa (translateX(-50%) centra el badge en el punto lat/lng)
+function mkGarajeIcon(g) {
+  const full = g.lugares_libres === 0;
+  const bg = full ? '#1f2937' : '#ffffff';
+  const color = full ? '#9ca3af' : '#121824';
+  const dot = !full
+    ? `<span style="width:8px;height:8px;flex-shrink:0;border-radius:50%;background:${Number(g.lugares_libres) > 10 ? '#22c55e' : '#f59e0b'};display:inline-block;margin-right:3px;"></span>`
+    : '';
+  const label = full ? 'Lleno' : ars(g.precio_desde);
+  return L.divIcon({
+    className: '',
+    html:
+      `<div style="display:inline-flex;flex-direction:column;align-items:center;transform:translateX(-50%);">` +
+      `<div style="background:${bg};color:${color};padding:5px 12px;border-radius:20px;font-size:13px;font-weight:800;display:flex;align-items:center;box-shadow:0 2px 12px rgba(0,0,0,0.35);white-space:nowrap;">${dot}${label}</div>` +
+      `<div style="width:10px;height:10px;background:${bg};transform:rotate(45deg);margin-top:-5px;flex-shrink:0;"></div>` +
+      `</div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 46],
+  });
+}
+
+// Mueve el mapa cuando cambia la geolocalización del usuario
+function MapUpdater({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo(center, map.getZoom(), { duration: 1 });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center[0], center[1]]);
+  return null;
+}
+
 /* ---------- 1. Búsqueda y mapa ---------- */
 function SearchStep({ horario, setHorario, modalidad, setModalidad, onSelect }) {
   const [garajes, setGarajes] = useState([]);
@@ -81,37 +123,28 @@ function SearchStep({ horario, setHorario, modalidad, setModalidad, onSelect }) 
       .then(setCercanos).catch(() => setCercanos([]));
   };
 
-  // Proyección simple lat/lng -> % del contenedor. Reemplazar por @vis.gl/react-google-maps en producción.
-  const bounds = garajes.reduce((b, g) => ({
-    minLat: Math.min(b.minLat, g.lat), maxLat: Math.max(b.maxLat, g.lat),
-    minLng: Math.min(b.minLng, g.lng), maxLng: Math.max(b.maxLng, g.lng),
-  }), { minLat: pos.lat, maxLat: pos.lat, minLng: pos.lng, maxLng: pos.lng });
-  const project = (lat, lng) => ({
-    left: `${12 + ((lng - bounds.minLng) / (bounds.maxLng - bounds.minLng || 1)) * 70}%`,
-    top: `${30 + (1 - (lat - bounds.minLat) / (bounds.maxLat - bounds.minLat || 1)) * 25}%`,
-  });
-
   return (
-    <div className="relative flex h-full flex-col bg-[#18202E]">
-      <div className="absolute inset-0" aria-label="Mapa de garajes">
-        {garajes.map((g) => {
-          const full = g.lugares_libres === 0;
-          return (
-            <button key={g.id} onClick={() => elegir(g)} className="absolute flex -translate-x-1/2 flex-col items-center" style={project(g.lat, g.lng)}>
-              <span className={`flex min-h-[36px] items-center gap-1.5 rounded-full px-3 text-[13px] font-extrabold shadow-lg ${full ? 'bg-ink-700 text-ink-subtle' : 'bg-white text-ink'}`}>
-                {!full && <span className={`h-2 w-2 rounded-full ${g.lugares_libres > 10 ? 'bg-success' : 'bg-hold'}`} />}
-                {full ? 'Lleno' : ars(g.precio_desde)}
-              </span>
-              <span className={`-mt-1.5 h-2.5 w-2.5 rotate-45 ${full ? 'bg-ink-700' : 'bg-white'}`} />
-            </button>
-          );
-        })}
-        <span className="absolute left-[8%] top-[62%] flex h-10 w-10 items-center justify-center rounded-full bg-brand/25">
-          <span className="h-4 w-4 rounded-full border-[3px] border-white bg-brand" />
-        </span>
+    <div className="relative flex h-full flex-col">
+      <div className="absolute inset-0">
+        <MapContainer center={[pos.lat, pos.lng]} zoom={15} zoomControl={false} className="h-full w-full">
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          />
+          <MapUpdater center={[pos.lat, pos.lng]} />
+          <Marker position={[pos.lat, pos.lng]} icon={USER_ICON} />
+          {garajes.map((g) => (
+            <Marker
+              key={g.id}
+              position={[Number(g.lat), Number(g.lng)]}
+              icon={mkGarajeIcon(g)}
+              eventHandlers={{ click: () => elegir(g) }}
+            />
+          ))}
+        </MapContainer>
       </div>
 
-      <div className="relative z-10 flex flex-col gap-2 p-4">
+      <div className="relative z-[1000] flex flex-col gap-2 p-4">
         <div className="card flex flex-col gap-2.5 p-3">
           <ModalidadSelector value={modalidad} onChange={setModalidad} />
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-sm">
@@ -131,7 +164,7 @@ function SearchStep({ horario, setHorario, modalidad, setModalidad, onSelect }) 
         </div>
       </div>
 
-      <div className="relative z-10 mt-auto flex max-h-[58%] flex-col rounded-t-3xl bg-paper">
+      <div className="relative z-[1000] mt-auto flex max-h-[58%] flex-col rounded-t-3xl bg-paper">
         <div className="mx-auto mt-2.5 h-1.5 w-10 rounded-full bg-ink-line" />
         <div className="flex items-baseline justify-between px-5 pb-3 pt-3.5">
           <h2 className="text-xl font-extrabold">{loading ? 'Buscando…' : lleno ? `${lleno.nombre} está lleno` : `${garajes.length} garajes cerca`}</h2>
