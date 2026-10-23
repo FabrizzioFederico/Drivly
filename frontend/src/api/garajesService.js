@@ -77,4 +77,22 @@ export const garajesService = {
     if (USE_MOCKS) return mocks.metricas(id);
     return (await client.get(`/garajes/${id}/metricas/`, { params })).data;
   },
+
+  /** GET /garajes/{id}/playeros/ -> [{ id, email, nombre, is_active }] */
+  async getPlayeros(id) {
+    if (USE_MOCKS) return [];
+    return lista((await client.get(`/garajes/${id}/playeros/`)).data);
+  },
+
+  /** POST /garajes/{id}/playeros/ { email, nombre } */
+  async addPlayero(id, body) {
+    if (USE_MOCKS) return body;
+    return (await client.post(`/garajes/${id}/playeros/`, body)).data;
+  },
+
+  /** DELETE /garajes/{id}/playeros/{usuarioId}/ */
+  async removePlayero(garajeId, usuarioId) {
+    if (USE_MOCKS) return;
+    await client.delete(`/garajes/${garajeId}/playeros/${usuarioId}/`);
+  },
 };

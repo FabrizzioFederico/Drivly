@@ -131,6 +131,27 @@ class GarajeViewSet(viewsets.ModelViewSet):
         garaje.save(update_fields=["activo"])
         return Response(GarajeSerializer(garaje).data)
 
+    @action(detail=True, methods=["get", "put"])
+    def tarifas(self, request, pk=None):
+        """
+        GET  /api/garajes/{id}/tarifas/ — lista las tarifas del garaje.
+        PUT  /api/garajes/{id}/tarifas/ — reemplaza la lista completa (bulk replace).
+        Las modalidades ausentes dejan de ofrecerse.
+        """
+        garaje = self.get_object()
+        if request.method == "GET":
+            return Response(TarifaSerializer(garaje.tarifas.all(), many=True, context={"request": request}).data)
+        if not isinstance(request.data, list):
+            raise ValidationError("Se espera una lista de tarifas.")
+        with transaction.atomic():
+            garaje.tarifas.all().delete()
+            creadas = []
+            for dato in request.data:
+                s = TarifaSerializer(data={**dato, "garaje": str(garaje.id)}, context={"request": request})
+                s.is_valid(raise_exception=True)
+                creadas.append(s.save())
+        return Response(TarifaSerializer(creadas, many=True).data)
+
     @action(detail=True, methods=["get", "post"])
     def playeros(self, request, pk=None):
         garaje = self.get_object()

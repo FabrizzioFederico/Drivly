@@ -5,7 +5,6 @@ import StatusBadge from '../components/StatusBadge';
 import VehiclePlateBadge, { formatPatente } from '../components/VehiclePlateBadge';
 import { ars, downloadCsv, hora, CATEGORIA_LABEL } from '../lib/format';
 
-const GARAJE_ID = Number(import.meta.env.VITE_DEFAULT_GARAJE_ID || 1);
 const NAV = [
   { id: 'garaje', label: 'Mi Garaje' },
   { id: 'tarifas', label: 'Capacidad y Tarifas' },
@@ -16,7 +15,8 @@ const FILTROS = ['TODOS', 'HOLD', 'CONFIRMADA', 'EN_CURSO', 'CON_DEUDA', 'SIN_LU
 const STRIPES = 'repeating-linear-gradient(135deg,#7A8496 0 3px,#C9CFD8 3px 6px)';
 
 function Kpis({ m }) {
-  if (!m) return <div className="grid grid-cols-3 gap-4">{[0, 1, 2].map((i) => <div key={i} className="card h-[110px] animate-pulse" />)}</div>;
+  if (m === null) return <div className="grid grid-cols-3 gap-4">{[0, 1, 2].map((i) => <div key={i} className="card h-[110px] animate-pulse" />)}</div>;
+  if (!m?.ocupacion_pico) return null;
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <div className="card flex flex-col gap-1.5 px-5 py-4">
@@ -71,7 +71,9 @@ function desdeFilas(filas) {
 
 /** Y de vuelta: una fila por categoría y modalidad. Un abono sin precio deja de ofrecerse. */
 function aFilas({ hora, abonos }) {
-  const filas = hora.map((h) => ({ categoria: h.categoria, modalidad: 'HORA', precio_fraccion: h.precio_fraccion, fraccion_min: 15, minimo_fracciones: h.minimo_min / 15, precio_periodo: null }));
+  const filas = hora
+    .filter((h) => Number(h.precio_fraccion) > 0)
+    .map((h) => ({ categoria: h.categoria, modalidad: 'HORA', precio_fraccion: h.precio_fraccion, fraccion_min: 15, minimo_fracciones: h.minimo_min / 15, precio_periodo: null }));
   CATEGORIAS.forEach((c) => ABONOS.forEach((m) => {
     const precio = Number(abonos[c][m]);
     if (precio > 0) filas.push({ categoria: c, modalidad: m, precio_fraccion: null, fraccion_min: null, minimo_fracciones: null, precio_periodo: precio });
@@ -87,11 +89,13 @@ function TarifasPanel({ garajeId }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  const load = () => Promise.all([garajesService.get(garajeId), garajesService.getTarifas(garajeId), garajesService.metricas(garajeId)])
-    .then(([g, t, m]) => {
+  const load = () => Promise.all([garajesService.get(garajeId), garajesService.getTarifas(garajeId)])
+    .then(([g, t]) => {
       setGaraje(g);
       setConfig({ capacidad: g.capacidad, cupo_abonos: g.cupo_abonos, salida_estimada_default_min: g.salida_estimada_default_min, tolerancia_min: g.tolerancia_min, recargo_overstay: g.recargo_overstay });
-      setTarifas(desdeFilas(t)); setMetricas(m); setMsg(null);
+      setTarifas(desdeFilas(t)); setMsg(null);
+      // métricas son opcionales — el endpoint puede no existir aún
+      garajesService.metricas(garajeId).then(setMetricas).catch(() => setMetricas({}));
     })
     .catch((e) => setMsg({ ok: false, text: e.message }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -343,13 +347,241 @@ function MonitorPanel({ garajeId }) {
   );
 }
 
-function Placeholder({ title }) {
-  return <div className="card flex h-64 items-center justify-center text-ink-muted">{title}: módulo pendiente de definición.</div>;
+/* ---------- C3 · Mi Garaje (RFW-01) ---------- */
+async function geocodificar(direccion) {
+  const q = encodeURIComponent(`${direccion}, Buenos Aires, Argentina`);
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
+    headers: { 'Accept-Language': 'es' },
+  });
+  const data = await res.json();
+  if (!data.length) throw new Error('No se encontró la dirección. Probá con más detalle, ej: "Honduras 4870, Palermo, CABA".');
+  return { lat: data[0].lat, lng: data[0].lon, display: data[0].display_name };
+}
+
+function GarajePanel({ garajeId }) {
+  const [form, setForm] = useState(null);
+  const [geo, setGeo] = useState(null); // { lat, lng, display } — coordenadas geocodificadas
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const load = () =>
+    garajesService.get(garajeId)
+      .then((g) => {
+        setForm({ nombre: g.nombre, cuit: g.cuit, direccion: g.direccion });
+        if (g.lat && g.lng) setGeo({ lat: g.lat, lng: g.lng, display: null });
+      })
+      .catch((e) => setMsg({ ok: false, text: e.message }));
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [garajeId]);
+
+  const set = (k, v) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    if (k === 'direccion') setGeo(null); // dirección cambió → coordenadas desactualizadas
+  };
+
+  const guardar = async () => {
+    setSaving(true); setMsg(null);
+    try {
+      let coords = geo;
+      if (!coords) {
+        setMsg({ ok: null, text: 'Buscando coordenadas para la dirección…' });
+        coords = await geocodificar(form.direccion);
+        setGeo(coords);
+      }
+      await garajesService.updateConfiguracion(garajeId, {
+        ...form,
+        lat: Number(coords.lat).toFixed(6),
+        lng: Number(coords.lng).toFixed(6),
+      });
+      setMsg({ ok: true, text: `Datos guardados. Ubicación: ${coords.display ?? `${coords.lat}, ${coords.lng}`}` });
+    } catch (e) {
+      setMsg({ ok: false, text: e.message });
+    } finally { setSaving(false); }
+  };
+
+  if (!form) {
+    return msg
+      ? <div role="alert" className="rounded-card bg-debt-soft px-4 py-3 text-sm font-semibold text-debt-ink">{msg.text}</div>
+      : <div className="card h-48 animate-pulse" />;
+  }
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-[26px] font-extrabold tracking-tight">Mi Garaje</h1>
+          <p className="text-[13px] text-ink-muted">Datos públicos del establecimiento</p>
+        </div>
+        <button onClick={guardar} disabled={saving} className="btn-action">
+          {saving ? 'Guardando…' : 'Guardar cambios'}
+        </button>
+      </div>
+
+      {msg && (
+        <div role="alert" className={`rounded-card px-4 py-3 text-sm font-semibold ${msg.ok === true ? 'bg-success-soft text-success-ink' : msg.ok === false ? 'bg-debt-soft text-debt-ink' : 'bg-hold/10 text-hold-ink'}`}>
+          {msg.text}
+        </div>
+      )}
+
+      <section className="card flex max-w-[640px] flex-col gap-5 p-[22px]">
+        <h2 className="text-[17px] font-extrabold">Información del establecimiento</h2>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-ink-muted">Nombre del garaje</span>
+          <input value={form.nombre} onChange={(e) => set('nombre', e.target.value)} className="field" placeholder="Garage Plaza Serrano" />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-ink-muted">CUIT</span>
+          <input value={form.cuit} onChange={(e) => set('cuit', e.target.value)} className="field font-mono tracking-wider" placeholder="30-12345678-9" />
+          <span className="text-[11px] text-ink-muted">Formato: XX-XXXXXXXX-X</span>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-ink-muted">Dirección</span>
+          <input value={form.direccion} onChange={(e) => set('direccion', e.target.value)} className="field" placeholder="Honduras 4870, Palermo, CABA" />
+          {geo
+            ? <span className="text-[11px] text-success-ink">Ubicación encontrada: {Number(geo.lat).toFixed(5)}, {Number(geo.lng).toFixed(5)}</span>
+            : <span className="text-[11px] text-ink-muted">Al guardar se buscan las coordenadas automáticamente en OpenStreetMap.</span>
+          }
+        </label>
+      </section>
+    </>
+  );
+}
+
+/* ---------- C4 · Equipo — Playeros (RFW-06) ---------- */
+function EquipoPanel({ garajeId }) {
+  const [playeros, setPlayeros] = useState(null);
+  const [form, setForm] = useState({ email: '', nombre: '' });
+  const [adding, setAdding] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const load = () =>
+    garajesService.getPlayeros(garajeId)
+      .then(setPlayeros)
+      .catch((e) => setMsg({ ok: false, text: e.message }));
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [garajeId]);
+
+  const agregar = async (e) => {
+    e.preventDefault();
+    setAdding(true); setMsg(null);
+    try {
+      await garajesService.addPlayero(garajeId, form);
+      setForm({ email: '', nombre: '' });
+      await load();
+      setMsg({ ok: true, text: 'Playero agregado. Puede iniciar sesión con Google usando ese email.' });
+    } catch (err) {
+      setMsg({ ok: false, text: err.fields?.email?.[0] ?? err.message });
+    } finally { setAdding(false); }
+  };
+
+  const quitar = async (usuarioId) => {
+    try {
+      await garajesService.removePlayero(garajeId, usuarioId);
+      setPlayeros((ps) => ps.filter((p) => p.id !== usuarioId));
+    } catch (e) { setMsg({ ok: false, text: e.message }); }
+  };
+
+  return (
+    <>
+      <div>
+        <h1 className="text-[26px] font-extrabold tracking-tight">Equipo</h1>
+        <p className="text-[13px] text-ink-muted">Los playeros inician sesión con Google usando el email registrado aquí.</p>
+      </div>
+
+      {msg && (
+        <div role="alert" className={`rounded-card px-4 py-3 text-sm font-semibold ${msg.ok ? 'bg-success-soft text-success-ink' : 'bg-debt-soft text-debt-ink'}`}>
+          {msg.text}
+        </div>
+      )}
+
+      <section className="card flex max-w-[680px] flex-col gap-4 p-[22px]">
+        <h2 className="text-[17px] font-extrabold">Agregar playero</h2>
+        <form onSubmit={agregar} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <input required type="email" placeholder="Email" value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            className="field" />
+          <input placeholder="Nombre (opcional)" value={form.nombre}
+            onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+            className="field" />
+          <button disabled={adding || !form.email} className="btn-action min-h-[44px] px-5">
+            {adding ? '…' : 'Agregar'}
+          </button>
+        </form>
+        <p className="text-[11px] text-ink-muted">Si el playero ya tiene cuenta en Drivly sin garaje asignado, se le reasigna este garaje automáticamente.</p>
+      </section>
+
+      <section className="card overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-[18px]">
+          <h2 className="text-[17px] font-extrabold">Miembros del equipo</h2>
+          {playeros && (
+            <span className="text-[13px] text-ink-muted">
+              {playeros.length} {playeros.length === 1 ? 'playero' : 'playeros'}
+            </span>
+          )}
+        </div>
+        {!playeros ? (
+          <div className="flex flex-col gap-2 px-6 pb-6">
+            {[0, 1, 2].map((i) => <div key={i} className="h-14 animate-pulse rounded-card bg-ink-soft" />)}
+          </div>
+        ) : playeros.length === 0 ? (
+          <p className="px-6 pb-6 text-sm text-ink-muted">No hay playeros registrados en este garaje.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-[#F4F6F8] text-xs font-bold text-ink-muted">
+              <tr>
+                <th className="px-6 py-2.5 text-left">Nombre</th>
+                <th className="px-6 py-2.5 text-left">Email</th>
+                <th className="px-6 py-2.5 text-left">Estado</th>
+                <th className="px-6 py-2.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {playeros.map((p) => (
+                <tr key={p.id} className="h-[56px] border-b border-ink-soft last:border-0 hover:bg-[#F8FAFF]">
+                  <td className="px-6">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink text-[13px] font-extrabold text-white">
+                        {(p.nombre || p.email).slice(0, 2).toUpperCase()}
+                      </span>
+                      <span className="font-semibold">{p.nombre || '—'}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 text-ink-muted">{p.email}</td>
+                  <td className="px-6">
+                    <span className={`inline-flex h-6 items-center rounded-full px-2.5 text-xs font-bold ${p.is_active ? 'bg-success-soft text-success-ink' : 'bg-ink-soft text-ink-muted'}`}>
+                      {p.is_active ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </td>
+                  <td className="px-6 text-right">
+                    <button onClick={() => quitar(p.id)} className="text-xs font-bold text-debt-ink hover:underline">
+                      Quitar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </>
+  );
 }
 
 export default function AdminPortalView({ user }) {
-  const garajeId = user?.garaje ?? GARAJE_ID;
-  const [section, setSection] = useState('tarifas');
+  const [garajeId, setGarajeId] = useState(null);
+  const [sinGaraje, setSinGaraje] = useState(false);
+  const [section, setSection] = useState('garaje');
+
+  useEffect(() => {
+    garajesService.list()
+      .then((gs) => {
+        if (gs.length) setGarajeId(gs[0].id);
+        else setSinGaraje(true);
+      })
+      .catch(() => setSinGaraje(true));
+  }, []);
 
   return (
     <div className="mx-auto grid min-h-[800px] w-full max-w-[1440px] overflow-hidden rounded-sheet bg-paper shadow-2xl lg:grid-cols-[240px_1fr]">
@@ -373,11 +605,23 @@ export default function AdminPortalView({ user }) {
         </div>
       </aside>
       <main className="flex min-w-0 flex-col gap-5 p-6 lg:px-8 lg:py-7">
-        {section === 'tarifas' && <TarifasPanel garajeId={garajeId} />}
-        {section === 'reportes' && <MonitorPanel garajeId={garajeId} />}
-        {section === 'garaje' && <Placeholder title="Mi Garaje" />}
-        {section === 'equipo' && <Placeholder title="Equipo (Playeros)" />}
+        {sinGaraje ? (
+          <div className="card flex flex-col gap-3 p-8">
+            <h2 className="text-[17px] font-extrabold">No tenés ningún garaje registrado</h2>
+            <p className="text-sm text-ink-muted">Contactá a soporte de Drivly para dar de alta tu establecimiento, o ejecutá <code className="rounded bg-ink-soft px-1 py-0.5 font-mono text-xs">python manage.py seed_dev</code> en el servidor para cargar datos de prueba.</p>
+          </div>
+        ) : !garajeId ? (
+          <div className="card h-48 animate-pulse" />
+        ) : (
+          <>
+            {section === 'tarifas' && <TarifasPanel garajeId={garajeId} />}
+            {section === 'reportes' && <MonitorPanel garajeId={garajeId} />}
+            {section === 'garaje' && <GarajePanel garajeId={garajeId} />}
+            {section === 'equipo' && <EquipoPanel garajeId={garajeId} />}
+          </>
+        )}
       </main>
+
     </div>
   );
 }

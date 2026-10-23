@@ -13,14 +13,20 @@ const ROLES = [
 ];
 const HAS_GOOGLE = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
+const DEV_ROLES = [
+  { rol: 'CONDUCTOR',    label: 'Conductor',      hint: 'App móvil' },
+  { rol: 'ADMIN_GARAJE', label: 'Administrador',  hint: 'Panel web' },
+  { rol: 'PLAYERO',      label: 'Playero',        hint: 'Escáner QR' },
+];
+
 function Login({ onLogin }) {
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null); // null | rol string
 
-  const handle = async (credential) => {
-    setBusy(true); setError(null);
-    try { onLogin(await authService.loginWithGoogle(credential)); }
-    catch (e) { setError(e.message); } finally { setBusy(false); }
+  const handle = async (credential, rol) => {
+    setBusy(rol ?? 'google'); setError(null);
+    try { onLogin(await authService.loginWithGoogle(credential, rol)); }
+    catch (e) { setError(e.message); } finally { setBusy(null); }
   };
 
   return (
@@ -31,10 +37,20 @@ function Login({ onLogin }) {
           <span className="text-2xl font-extrabold">Drivly</span>
         </div>
         <div><h1 className="text-xl font-extrabold">Ingresá a tu cuenta</h1><p className="text-sm text-ink-muted">Conductores, playeros y administradores.</p></div>
-        {HAS_GOOGLE && !USE_MOCKS ? (
-          <GoogleLogin onSuccess={(r) => handle(r.credential)} onError={() => setError('No se pudo iniciar sesión con Google.')} locale="es" width="320" />
-        ) : (
-          <button onClick={() => handle('demo')} disabled={busy} className="btn-primary min-h-[52px]">{busy ? 'Ingresando…' : 'Entrar en modo demo'}</button>
+        {HAS_GOOGLE && !USE_MOCKS && (
+          <GoogleLogin onSuccess={(r) => handle(r.credential, null)} onError={() => setError('No se pudo iniciar sesión con Google.')} locale="es" width="320" />
+        )}
+        {(USE_MOCKS || import.meta.env.DEV) && (
+          <div className="flex flex-col gap-2">
+            {HAS_GOOGLE && <p className="text-xs font-bold text-ink-muted">O acceso rápido de desarrollo:</p>}
+            {DEV_ROLES.map(({ rol, label, hint }) => (
+              <button key={rol} onClick={() => handle('demo', rol)} disabled={busy !== null}
+                className={`flex items-center justify-between rounded-card border-[1.5px] px-4 py-3 text-left transition-colors ${busy === rol ? 'border-brand bg-brand/5' : 'border-ink-line bg-white hover:border-brand hover:bg-brand/5'}`}>
+                <span className="text-sm font-bold">{label}</span>
+                <span className="text-xs text-ink-muted">{busy === rol ? 'Ingresando…' : hint}</span>
+              </button>
+            ))}
+          </div>
         )}
         {error && <p role="alert" className="text-sm font-semibold text-debt-ink">{error}</p>}
       </div>
@@ -54,10 +70,13 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem('drivly.demoRole', role); }, [role]);
 
-  if (!user) return <Login onLogin={(u) => { setUser(u); if (u?.rol) setRole(u.rol); }} />;
+  // ADMIN_GARAJE del backend → tab 'ADMIN' del frontend
+  const toTabRole = (r) => r === 'ADMIN_GARAJE' ? 'ADMIN' : r;
+
+  if (!user) return <Login onLogin={(u) => { setUser(u); if (u?.rol) setRole(toTabRole(u.rol)); }} />;
 
   // En producción, el rol viene del JWT/perfil. El selector solo existe para demostración.
-  const demoSelector = USE_MOCKS || user.rol === 'ADMIN';
+  const demoSelector = USE_MOCKS || import.meta.env.DEV || user.rol === 'ADMIN';
 
   return (
     <div className="flex min-h-full flex-col bg-[#E6E9EE]">

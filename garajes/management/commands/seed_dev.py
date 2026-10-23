@@ -15,7 +15,7 @@ from cuentas.models import Rol, Usuario
 from garajes.models import Garaje, Tarifa
 
 
-ADMIN_EMAIL = "admin@drivly.local"
+ADMIN_EMAIL = "fabrizzio.federico@davinci.edu.ar"
 
 GARAJES = [
     {
@@ -111,17 +111,17 @@ class Command(BaseCommand):
             raise CommandError("seed_dev solo está disponible con DEBUG=True.")
 
         with transaction.atomic():
-            admin, created = Usuario.objects.get_or_create(
+            admin, created = Usuario.objects.update_or_create(
                 email=ADMIN_EMAIL,
-                defaults={"nombre": "Admin Garaje (Dev)", "rol": Rol.ADMIN_GARAJE},
+                defaults={"nombre": "Fabrizzio Federico", "rol": Rol.ADMIN_GARAJE},
             )
             if created:
                 self.stdout.write(f"  Usuario admin creado: {ADMIN_EMAIL}")
             else:
-                self.stdout.write(f"  Usuario admin ya existe: {ADMIN_EMAIL}")
+                self.stdout.write(f"  Usuario actualizado a ADMIN_GARAJE: {ADMIN_EMAIL}")
 
             for datos in GARAJES:
-                garaje, creado = Garaje.objects.get_or_create(
+                garaje, creado = Garaje.objects.update_or_create(
                     nombre=datos["nombre"],
                     defaults={**datos, "admin": admin},
                 )
@@ -131,6 +131,6 @@ class Command(BaseCommand):
                         Tarifa.objects.create(garaje=garaje, **t)
                     self.stdout.write(f"    Tarifas: {len(TARIFAS[garaje.nombre])}")
                 else:
-                    self.stdout.write(f"  Garaje ya existe: {garaje.nombre}")
+                    self.stdout.write(f"  Garaje reasignado a {ADMIN_EMAIL}: {garaje.nombre}")
 
         self.stdout.write(self.style.SUCCESS("\nseed_dev completado."))

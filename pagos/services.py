@@ -39,4 +39,7 @@ def crear_preferencia(reserva) -> str:
     if result["status"] >= 400:
         raise RuntimeError(f"Error creando preferencia MP: {result['response']}")
 
-    return result["response"]["init_point"]
+    # Con token TEST-* usamos sandbox_init_point para pagar con tarjetas de prueba.
+    is_test = settings.MERCADOPAGO_ACCESS_TOKEN.startswith("TEST-")
+    key = "sandbox_init_point" if is_test else "init_point"
+    return result["response"][key]
