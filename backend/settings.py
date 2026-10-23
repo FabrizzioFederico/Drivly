@@ -99,6 +99,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "EXCEPTION_HANDLER": "reservas.exceptions.manejador_errores",
 }
 
 SIMPLE_JWT = {
@@ -136,13 +137,19 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Drivly <no-reply@drivly.
 # --- Reglas de negocio (documentación, sección 1) --------------------------
 DRIVLY_HOLD_TTL = timedelta(minutes=env.int("HOLD_TTL_MIN", default=5))
 DRIVLY_RADIO_CERCANOS_M = env.int("RADIO_CERCANOS_M", default=1000)
+# Un vehículo EN_CURSO pasado su fin (overstay activo) se proyecta ocupando hasta ahora + este margen
+DRIVLY_OVERSTAY_PROYECCION = timedelta(minutes=env.int("OVERSTAY_PROYECCION_MIN", default=60))
 
 # --- Integraciones ---------------------------------------------------------
 GOOGLE_OAUTH_CLIENT_IDS = env.list("GOOGLE_OAUTH_CLIENT_IDS", default=[])  # web + Android
 MERCADOPAGO_ACCESS_TOKEN = env("MERCADOPAGO_ACCESS_TOKEN", default="")
 MERCADOPAGO_WEBHOOK_SECRET = env("MERCADOPAGO_WEBHOOK_SECRET", default="")
-PATENTE_AR_API_KEY = env("PATENTE_AR_API_KEY", default="")
-PATENTE_AR_MOCK = env.bool("PATENTE_AR_MOCK", default=DEBUG)  # mock mientras no haya contrato
+DATACAR_API_URL = env("DATACAR_API_URL", default="")
+DATACAR_API_KEY = env("DATACAR_API_KEY", default="")
+DATACAR_MOCK = env.bool("DATACAR_MOCK", default=DEBUG)  # simulador mientras no haya credenciales
+
+# Pagos simulados: POST /reservas/{id}/pagar/ confirma sin Mercado Pago (sólo desarrollo, Sprint 3 lo reemplaza)
+DRIVLY_PAGOS_SIMULADOS = env.bool("PAGOS_SIMULADOS", default=DEBUG)
 
 # --- Celery (expiración de holds, reintentos de patente, notificaciones) ---
 CELERY_BROKER_URL = env("REDIS_URL", default="redis://localhost:6379/0")
