@@ -155,6 +155,8 @@ MERCADOPAGO_OAUTH_REDIRECT_URI = env("MP_OAUTH_REDIRECT_URI", default="http://lo
 MERCADOPAGO_TOKEN_ENCRYPTION_KEY = env("MP_TOKEN_ENCRYPTION_KEY", default="")  # clave Fernet
 DRIVLY_COMISION = Decimal(env("COMISION_DRIVLY", default="0.10"))  # 10 % de cada reserva (sección 7.2)
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
+# Deep link de la app Android del conductor: MP vuelve ahí al terminar el pago y la Custom Tab se cierra sola
+APP_DEEPLINK_PAGO = env("APP_DEEPLINK_PAGO", default="drivly://pago-resultado")
 BACKEND_URL  = env("BACKEND_URL",  default="http://localhost:8000")
 DATACAR_API_URL = env("DATACAR_API_URL", default="")
 DATACAR_API_KEY = env("DATACAR_API_KEY", default="")

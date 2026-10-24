@@ -2,7 +2,7 @@ from django.conf import settings
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -87,9 +87,11 @@ class ReservaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
         if reserva.estado != EstadoReserva.HOLD or reserva.hold_expira <= timezone.now():
             raise EstadoInvalido("La reserva ya no está esperando pago. Volvé a reservar.")
 
-        from pagos.services import crear_preferencia
-        init_point = crear_preferencia(reserva)
-        return Response({"init_point": init_point})
+        from pagos.services import CANALES, crear_preferencia
+        canal = request.data.get("canal", "web")  # {"canal": "app"} desde la app Android: vuelve por deep link
+        if canal not in CANALES:
+            raise ValidationError({"canal": f"Debe ser uno de: {', '.join(CANALES)}."})
+        return Response({"init_point": crear_preferencia(reserva, canal)})
 
     @action(detail=True, methods=["get"])
     def qr(self, request, pk=None):

@@ -501,3 +501,31 @@ def test_con_pagos_simulados_se_ofrecen_todos(cliente, garaje, conductor, settin
     ConexionMP.objects.all().delete()
     q = {"lat": "-34.5885", "lng": "-58.4305", "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
     assert [g["nombre"] for g in cliente(conductor).get("/api/garajes/disponibles/", q).data] == ["Palermo"]
+
+
+# ---------- App Android del conductor ----------
+
+def test_pago_desde_la_app_vuelve_por_deep_link(cliente, garaje, mp):
+    reserva = hold(garaje)
+    r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/", {"canal": "app"}, format="json")
+    assert r.status_code == 200 and r.data == {"init_point": "https://mp/checkout"}
+    pref = mp.preferencias[0]
+    assert pref["back_urls"] == {
+        "success": "drivly://pago-resultado?mp_status=success",
+        "failure": "drivly://pago-resultado?mp_status=failure",
+        "pending": "drivly://pago-resultado?mp_status=pending",
+    }
+    assert pref["auto_return"] == "approved" and pref["marketplace_fee"] == 400.0
+
+
+def test_pago_web_sin_url_publica_no_usa_auto_return(cliente, garaje, mp):
+    reserva = hold(garaje)
+    cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/")
+    pref = mp.preferencias[0]
+    assert pref["back_urls"]["success"] == "http://localhost:5173/?mp_status=success" and "auto_return" not in pref
+
+
+def test_canal_invalido(cliente, garaje, mp):
+    reserva = hold(garaje)
+    r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/", {"canal": "ios"}, format="json")
+    assert r.status_code == 400 and "canal" in r.data and mp.preferencias == []
