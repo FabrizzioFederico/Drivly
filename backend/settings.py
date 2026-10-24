@@ -3,6 +3,7 @@ Configuración de Drivly (Django 6.1).
 Todos los valores sensibles o que cambian por entorno se leen de variables de entorno (.env).
 """
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import environ
@@ -142,8 +143,13 @@ DRIVLY_OVERSTAY_PROYECCION = timedelta(minutes=env.int("OVERSTAY_PROYECCION_MIN"
 
 # --- Integraciones ---------------------------------------------------------
 GOOGLE_OAUTH_CLIENT_IDS = env.list("GOOGLE_OAUTH_CLIENT_IDS", default=[])  # web + Android
-MERCADOPAGO_ACCESS_TOKEN = env("MERCADOPAGO_ACCESS_TOKEN", default="")
 MERCADOPAGO_WEBHOOK_SECRET = env("MERCADOPAGO_WEBHOOK_SECRET", default="")
+# Split de pagos (Marketplace): cada garaje conecta su cuenta por OAuth y cobra en ella; Drivly retiene la comisión.
+MERCADOPAGO_APP_ID = env("MP_APP_ID", default="")
+MERCADOPAGO_CLIENT_SECRET = env("MP_CLIENT_SECRET", default="")
+MERCADOPAGO_OAUTH_REDIRECT_URI = env("MP_OAUTH_REDIRECT_URI", default="http://localhost:8000/api/pagos/oauth/callback/")
+MERCADOPAGO_TOKEN_ENCRYPTION_KEY = env("MP_TOKEN_ENCRYPTION_KEY", default="")  # clave Fernet
+DRIVLY_COMISION = Decimal(env("COMISION_DRIVLY", default="0.10"))  # 10 % de cada reserva (sección 7.2)
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 BACKEND_URL  = env("BACKEND_URL",  default="http://localhost:8000")
 DATACAR_API_URL = env("DATACAR_API_URL", default="")
@@ -160,6 +166,10 @@ CELERY_BEAT_SCHEDULE = {
     "expirar-holds": {
         "task": "reservas.tasks.expirar_holds",
         "schedule": 60.0,
+    },
+    "renovar-conexiones-mp": {
+        "task": "pagos.tasks.renovar_conexiones_mp",
+        "schedule": 60.0 * 60 * 24,
     },
 }
 

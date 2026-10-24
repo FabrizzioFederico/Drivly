@@ -186,7 +186,9 @@ def test_cp09_tarea_de_expiracion(garaje):
     assert r.estado == "EXPIRADA" and vigente.estado == "HOLD"
 
 
-def test_cp10_pago_dentro_del_ttl_confirma_y_emite_qr(cliente, conductor_v, garaje):
+def test_cp10_pago_dentro_del_ttl_confirma_y_emite_qr(cliente, conductor_v, garaje, settings):
+    """Con pagos simulados. El flujo real con Mercado Pago se prueba en pagos/tests.py."""
+    settings.DRIVLY_PAGOS_SIMULADOS = True
     u, _ = conductor_v
     rid = pedir(cliente, conductor_v, garaje, manana(14), manana(15)).data["id"]
     r = cliente(u).post(f"/api/reservas/{rid}/pagar/")

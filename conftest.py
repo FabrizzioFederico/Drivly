@@ -1,12 +1,35 @@
 from decimal import Decimal
 
 import pytest
+from cryptography.fernet import Fernet
 from rest_framework.test import APIClient
 
 from cuentas.models import Rol, Usuario
 from garajes.models import Garaje
 
 CUIT_VALIDO = "30-71234567-1"
+CLAVE_CIFRADO_TESTS = Fernet.generate_key().decode()
+
+
+class _SDKBloqueado:
+    def __init__(self, *args, **kwargs):
+        raise AssertionError("Un test intentó conectarse a Mercado Pago: usá el fixture `mp` de pagos/tests.py.")
+
+
+@pytest.fixture(autouse=True)
+def _aislar_de_mercado_pago(settings, monkeypatch):
+    """Los tests no dependen del .env ni llaman a Mercado Pago de verdad."""
+    settings.MERCADOPAGO_WEBHOOK_SECRET = "secreto-de-tests"
+    settings.MERCADOPAGO_APP_ID = "app-de-tests"
+    settings.MERCADOPAGO_CLIENT_SECRET = "client-secret-de-tests"
+    settings.MERCADOPAGO_OAUTH_REDIRECT_URI = "http://localhost:8000/api/pagos/oauth/callback/"
+    settings.MERCADOPAGO_TOKEN_ENCRYPTION_KEY = CLAVE_CIFRADO_TESTS
+    settings.DRIVLY_COMISION = Decimal("0.10")
+    settings.DRIVLY_PAGOS_SIMULADOS = False
+    settings.FRONTEND_URL = "http://localhost:5173"
+    settings.BACKEND_URL = "http://localhost:8000"
+    monkeypatch.setattr("mercadopago.SDK", _SDKBloqueado)
+    monkeypatch.setattr("pagos.oauth.requests.post", _SDKBloqueado)
 
 
 @pytest.fixture

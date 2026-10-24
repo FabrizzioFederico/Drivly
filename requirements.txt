@@ -7,6 +7,7 @@ django-environ
 psycopg[binary]>=3.2
 google-auth          # validar el ID token de Google OAuth
 mercadopago          # SDK oficial de Mercado Pago
+cryptography         # cifrado de los tokens OAuth de los garajes
 celery[redis]
 requests
 gunicorn

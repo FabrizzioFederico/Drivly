@@ -46,7 +46,7 @@ def test_endpoint_google_devuelve_jwt_con_rol(db, cliente, monkeypatch):
     monkeypatch.setattr("cuentas.views.verificar_token_google", lambda t: INFO)
     r = cliente().post("/api/auth/google/", {"id_token": "x", "rol": "ADMIN_GARAJE"}, format="json")
     assert r.status_code == 200
-    assert r.data["usuario"]["rol"] == "ADMIN_GARAJE" and r.data["access"] and r.data["refresh"]
+    assert r.data["user"]["rol"] == "ADMIN_GARAJE" and r.data["access"] and r.data["refresh"]
 
 
 def test_login_email_y_me(conductor, cliente):

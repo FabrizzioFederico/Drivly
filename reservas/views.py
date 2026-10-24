@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -71,6 +72,9 @@ class ReservaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
 
         if settings.DRIVLY_PAGOS_SIMULADOS:
             return Response(ReservaSerializer(services.confirmar_pago(reserva.id)).data)
+
+        if reserva.estado != EstadoReserva.HOLD or reserva.hold_expira <= timezone.now():
+            raise EstadoInvalido("La reserva ya no está esperando pago. Volvé a reservar.")
 
         from pagos.services import crear_preferencia
         init_point = crear_preferencia(reserva)

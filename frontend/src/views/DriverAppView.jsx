@@ -385,7 +385,7 @@ function HoldStep({ garaje, horario, modalidad, vehiculo, setVehiculo, onBack, o
 
       <footer className="flex shrink-0 flex-col gap-2 border-t border-ink-soft bg-white px-4 pb-6 pt-3">
         {reserva ? (
-          <button onClick={pagar} disabled={busy} data-mp-checkout-cta="checkout-pro" className="btn-action min-h-[56px] text-[17px]">
+          <button onClick={pagar} disabled={busy} data-mp-checkout-cta="checkout-pro" data-mp-marketplace-checkout="checkout-pro" className="btn-action min-h-[56px] text-[17px]">
             {busy ? 'Redirigiendo a Mercado Pago…' : `Pagar ${ars(reserva.total)} con Mercado Pago`}
           </button>
         ) : (

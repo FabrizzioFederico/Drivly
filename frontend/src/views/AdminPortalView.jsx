@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { garajesService } from '../api/garajesService';
+import { pagosService } from '../api/pagosService';
 import { reservasService } from '../api/reservasService';
 import StatusBadge from '../components/StatusBadge';
 import VehiclePlateBadge, { formatPatente } from '../components/VehiclePlateBadge';
@@ -9,6 +10,7 @@ const NAV = [
   { id: 'garaje', label: 'Mi Garaje' },
   { id: 'tarifas', label: 'Capacidad y Tarifas' },
   { id: 'equipo', label: 'Equipo (Playeros)' },
+  { id: 'cobros', label: 'Cobros (Mercado Pago)' },
   { id: 'reportes', label: 'Reportes y Caja' },
 ];
 const FILTROS = ['TODOS', 'HOLD', 'CONFIRMADA', 'EN_CURSO', 'CON_DEUDA', 'SIN_LUGAR'];
@@ -448,6 +450,69 @@ function GarajePanel({ garajeId }) {
   );
 }
 
+/* ---------- Cobros — conexión de la cuenta de Mercado Pago (split de pagos, sección 7.2) ---------- */
+function CobrosPanel({ garajeId, retorno }) {
+  const [estado, setEstado] = useState(null);
+  const [conectando, setConectando] = useState(false);
+  const [msg, setMsg] = useState(
+    retorno === 'ok' ? { ok: true, text: '¡Cuenta conectada! Los pagos de tus reservas se acreditan en tu Mercado Pago.' }
+      : retorno === 'error' ? { ok: false, text: 'No se pudo conectar la cuenta. Intentá nuevamente; si el problema sigue, escribinos a soporte.' }
+        : null,
+  );
+
+  useEffect(() => {
+    pagosService.estadoMercadoPago(garajeId).then(setEstado).catch((e) => setMsg({ ok: false, text: e.message }));
+  }, [garajeId]);
+
+  const conectar = async () => {
+    setConectando(true); setMsg(null);
+    try {
+      const { url } = await pagosService.conectarMercadoPago(garajeId);
+      window.location.href = url; // salimos de la app hacia Mercado Pago
+    } catch (e) {
+      setMsg({ ok: false, text: `${e.message}. Intentá nuevamente.` });
+      setConectando(false);
+    }
+  };
+
+  return (
+    <div data-mp-marketplace-page="checkout-pro" className="flex flex-col gap-5">
+      <div>
+        <h1 className="text-[26px] font-extrabold tracking-tight">Cobros</h1>
+        <p className="text-[13px] text-ink-muted">Cada reserva se cobra en tu cuenta de Mercado Pago. Drivly retiene automáticamente su comisión del 10 %.</p>
+      </div>
+
+      {msg && (
+        <div role="alert" className={`rounded-card px-4 py-3 text-sm font-semibold ${msg.ok ? 'bg-success-soft text-success-ink' : 'bg-debt-soft text-debt-ink'}`}>
+          {msg.text}
+        </div>
+      )}
+
+      <section className="card flex max-w-[640px] flex-col gap-4 p-[22px]">
+        <h2 className="text-[17px] font-extrabold">Cuenta de Mercado Pago</h2>
+        {!estado ? (
+          <p className="text-sm text-ink-muted" aria-live="polite">Cargando estado de la conexión…</p>
+        ) : estado.conectado ? (
+          <p className="text-sm font-semibold text-success-ink">
+            Conectada{estado.conectada_en ? ` desde el ${new Date(estado.conectada_en).toLocaleDateString('es-AR')}` : ''}. Los conductores ya pueden pagar sus reservas.
+          </p>
+        ) : (
+          <p className="text-sm text-ink-muted">
+            {estado.requiere_reautorizar
+              ? 'Mercado Pago pidió volver a autorizar a Drivly. Mientras tanto los conductores no pueden pagar reservas en este garaje.'
+              : 'Todavía no conectaste tu cuenta. Sin ella los conductores no pueden pagar reservas en este garaje.'}
+          </p>
+        )}
+        {estado && !estado.conectado && (
+          <button onClick={conectar} disabled={conectando} data-mp-marketplace-connect="oauth" className="btn-action self-start">
+            {conectando ? 'Redirigiendo a Mercado Pago…' : estado.requiere_reautorizar ? 'Volver a autorizar' : 'Conectar Mercado Pago'}
+          </button>
+        )}
+      </section>
+    </div>
+  );
+}
+
 /* ---------- C4 · Equipo — Playeros (RFW-06) ---------- */
 function EquipoPanel({ garajeId }) {
   const [playeros, setPlayeros] = useState(null);
@@ -572,7 +637,13 @@ function EquipoPanel({ garajeId }) {
 export default function AdminPortalView({ user }) {
   const [garajeId, setGarajeId] = useState(null);
   const [sinGaraje, setSinGaraje] = useState(false);
-  const [section, setSection] = useState('garaje');
+  // Al volver de autorizar en Mercado Pago el backend redirige a /?mp_conexion=ok|error
+  const [retornoMP] = useState(() => new URLSearchParams(window.location.search).get('mp_conexion'));
+  const [section, setSection] = useState(retornoMP ? 'cobros' : 'garaje');
+
+  useEffect(() => {
+    if (retornoMP) window.history.replaceState({}, '', '/');
+  }, [retornoMP]);
 
   useEffect(() => {
     garajesService.list()
@@ -618,6 +689,7 @@ export default function AdminPortalView({ user }) {
             {section === 'reportes' && <MonitorPanel garajeId={garajeId} />}
             {section === 'garaje' && <GarajePanel garajeId={garajeId} />}
             {section === 'equipo' && <EquipoPanel garajeId={garajeId} />}
+            {section === 'cobros' && <CobrosPanel garajeId={garajeId} retorno={retornoMP} />}
           </>
         )}
       </main>
