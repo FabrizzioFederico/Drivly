@@ -243,6 +243,16 @@ def test_cancelar_hold_libera_el_lugar(cliente, conductor_v, garaje):
     assert pedir(cliente, nuevo_conductor(), garaje, manana(14), manana(15)).status_code == 201
 
 
+def test_cancelar_confirmada_con_pagos_simulados_no_reembolsa(cliente, conductor_v, garaje):
+    u, v = conductor_v
+    r = ocupar(garaje, manana(14), manana(15))
+    Reserva.objects.filter(id=r.id).update(conductor=u, vehiculo=v)
+    datos = cliente(u).get(f"/api/reservas/{r.id}/").data
+    assert datos["cancelable_hasta"] is not None
+    respuesta = cliente(u).post(f"/api/reservas/{r.id}/cancelar/").data
+    assert respuesta["estado"] == "CANCELADA" and respuesta["reembolso"] is None and respuesta["cancelable_hasta"] is None
+
+
 def test_no_se_cancela_una_reserva_en_curso(cliente, conductor_v, garaje):
     u, v = conductor_v
     r = Reserva.objects.create(conductor=u, vehiculo=v, garaje=garaje, periodo=DateTimeTZRange(manana(14), manana(15)),

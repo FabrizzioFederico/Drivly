@@ -61,6 +61,10 @@ def oauth_callback(request):
     except OAuthError as e:
         logger.warning("Conexión de Mercado Pago fallida: %s", e)
         resultado = "error"
+    except Exception:
+        # Error nuestro (base, cifrado...): queda en el log y el admin vuelve a la app con un mensaje, no a un 500.
+        logger.exception("Error inesperado guardando la conexión de Mercado Pago")
+        resultado = "error"
     return HttpResponseRedirect(f"{settings.FRONTEND_URL}/?mp_conexion={resultado}")
 
 

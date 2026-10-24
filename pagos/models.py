@@ -13,7 +13,7 @@ class ConexionMP(models.Model):
     access_token_cifrado = models.TextField()
     refresh_token_cifrado = models.TextField()
     expira_en = models.DateTimeField()
-    scope = models.CharField(max_length=255, blank=True, default="")
+    scope = models.TextField(blank=True, default="")  # MP devuelve decenas de permisos: no tiene largo fijo
     # Si el refresh falla hay que volver a autorizar: no se cobra con el token de Drivly como reemplazo.
     requiere_reautorizar = models.BooleanField(default=False)
     conectada_en = models.DateTimeField(auto_now_add=True)

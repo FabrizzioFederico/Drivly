@@ -140,6 +140,10 @@ DRIVLY_HOLD_TTL = timedelta(minutes=env.int("HOLD_TTL_MIN", default=5))
 DRIVLY_RADIO_CERCANOS_M = env.int("RADIO_CERCANOS_M", default=1000)
 # Un vehículo EN_CURSO pasado su fin (overstay activo) se proyecta ocupando hasta ahora + este margen
 DRIVLY_OVERSTAY_PROYECCION = timedelta(minutes=env.int("OVERSTAY_PROYECCION_MIN", default=60))
+# Una reserva pagada se puede cancelar con reembolso total hasta este tiempo antes del inicio
+DRIVLY_CANCELACION_ANTICIPACION = timedelta(minutes=env.int("CANCELACION_ANTICIPACION_MIN", default=120))
+# ...o dentro de estos minutos desde el pago, para quien reserva con menos anticipación (nunca después del inicio)
+DRIVLY_CANCELACION_GRACIA = timedelta(minutes=env.int("CANCELACION_GRACIA_MIN", default=10))
 
 # --- Integraciones ---------------------------------------------------------
 GOOGLE_OAUTH_CLIENT_IDS = env.list("GOOGLE_OAUTH_CLIENT_IDS", default=[])  # web + Android
@@ -170,6 +174,10 @@ CELERY_BEAT_SCHEDULE = {
     "renovar-conexiones-mp": {
         "task": "pagos.tasks.renovar_conexiones_mp",
         "schedule": 60.0 * 60 * 24,
+    },
+    "reintentar-reembolsos": {
+        "task": "pagos.tasks.reintentar_reembolsos",
+        "schedule": 60.0 * 15,
     },
 }
 

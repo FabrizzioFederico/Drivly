@@ -34,14 +34,21 @@ class ReservaSerializer(serializers.ModelSerializer):
     hold_expira_en = serializers.DateTimeField(source="hold_expira", read_only=True)
     total = serializers.DecimalField(source="monto", max_digits=12, decimal_places=2, read_only=True)
     garaje_detalle = GarajeResumenSerializer(source="garaje", read_only=True)
+    cancelable_hasta = serializers.SerializerMethodField()
 
     class Meta:
         model = Reserva
         fields = [
             "id", "garaje", "garaje_detalle", "vehiculo", "patente", "categoria", "origen", "modalidad",
-            "inicio", "fin", "estado", "hold_expira_en", "total", "creada_en",
+            "inicio", "fin", "estado", "hold_expira_en", "total", "creada_en", "cancelable_hasta",
         ]
         read_only_fields = fields
+
+    def get_cancelable_hasta(self, reserva):
+        from .services import cancelable_hasta  # evita import circular
+
+        limite = cancelable_hasta(reserva)
+        return serializers.DateTimeField().to_representation(limite) if limite else None
 
 
 class HoldSerializer(serializers.Serializer):

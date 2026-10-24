@@ -57,6 +57,7 @@ class Reserva(models.Model):
     salida_estimada = models.DateTimeField(null=True, blank=True)
     suscripcion_mp_id = models.CharField(max_length=64, blank=True, default="")
     qr_token = models.CharField(max_length=128, unique=True, null=True, blank=True)
+    confirmada_en = models.DateTimeField(null=True, blank=True)  # cuándo se acreditó el pago (gracia para cancelar)
     creada_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -175,18 +175,47 @@ def _confirmar(reserva_id):
         return reserva, False
     reserva.estado = EstadoReserva.CONFIRMADA
     reserva.qr_token = generar_qr_token(reserva)
-    reserva.save(update_fields=["estado", "qr_token"])
+    reserva.confirmada_en = ahora
+    reserva.save(update_fields=["estado", "qr_token", "confirmada_en"])
     return reserva, True
+
+
+def cancelable_hasta(reserva):
+    """
+    Último momento en que una reserva confirmada se puede cancelar con reembolso total (None si no aplica):
+    hasta DRIVLY_CANCELACION_ANTICIPACION antes del inicio, o dentro de DRIVLY_CANCELACION_GRACIA desde el pago
+    (lo que sea más tarde). La gracia cubre a quien reserva sobre la hora, pero nunca pasa del inicio.
+    """
+    if reserva.estado != EstadoReserva.CONFIRMADA:
+        return None
+    limite = reserva.inicio - settings.DRIVLY_CANCELACION_ANTICIPACION
+    if reserva.confirmada_en:
+        limite = max(limite, min(reserva.confirmada_en + settings.DRIVLY_CANCELACION_GRACIA, reserva.inicio))
+    return limite
+
+
+def _minutos(duracion):
+    minutos = int(duracion.total_seconds() // 60)
+    return f"{minutos // 60} h" if minutos % 60 == 0 else f"{minutos} min"
 
 
 @transaction.atomic
 def cancelar(reserva):
-    """Libera un hold o cancela una reserva confirmada que todavía no empezó (el reembolso llega en Sprint 3)."""
+    """
+    Libera un hold, o cancela una reserva confirmada hasta DRIVLY_CANCELACION_ANTICIPACION antes del inicio.
+    El reembolso del pago lo hace pagos.services.reembolsar_cancelacion (este módulo no conoce Mercado Pago).
+    """
     reserva = Reserva.objects.select_for_update().get(pk=reserva.pk)
     if reserva.estado == EstadoReserva.HOLD:
         pass
-    elif reserva.estado == EstadoReserva.CONFIRMADA and reserva.inicio > timezone.now():
+    elif reserva.estado == EstadoReserva.CONFIRMADA and timezone.now() <= cancelable_hasta(reserva) \
+            and reserva.inicio > timezone.now():
         pass
+    elif reserva.estado == EstadoReserva.CONFIRMADA and reserva.inicio > timezone.now():
+        raise EstadoInvalido(
+            f"Las reservas se pueden cancelar hasta {_minutos(settings.DRIVLY_CANCELACION_ANTICIPACION)} antes "
+            f"del inicio, o en los {_minutos(settings.DRIVLY_CANCELACION_GRACIA)} siguientes al pago."
+        )
     else:
         raise EstadoInvalido("Sólo se puede cancelar un hold o una reserva confirmada que todavía no empezó.")
     reserva.estado = EstadoReserva.CANCELADA

@@ -7,5 +7,7 @@ export default defineConfig({
     port: 5173,
     // Proxy opcional: evita CORS en desarrollo si VITE_API_URL=/api
     proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } },
+    // ngrok apunta a Vite: app y API comparten el dominio público HTTPS que exige Mercado Pago (auto_return, OAuth, webhook)
+    allowedHosts: ['.ngrok-free.dev', '.ngrok-free.app'],
   },
 });

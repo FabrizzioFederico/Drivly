@@ -16,7 +16,7 @@ from freezegun import freeze_time
 from garajes.models import Garaje, Tarifa
 from pagos import oauth, services
 from pagos.models import ConexionMP, EstadoOAuth, Pago, ResultadoPago
-from pagos.tasks import renovar_conexiones_mp
+from pagos.tasks import reintentar_reembolsos, renovar_conexiones_mp
 from reservas.models import EstadoReserva, Modalidad, Reserva
 from reservas.services import crear_hold
 from reservas.tests import manana, nuevo_conductor
@@ -90,7 +90,7 @@ class TokenMPFalso:
             return SimpleNamespace(status_code=400, json=lambda: {"message": "invalid_grant"})
         return SimpleNamespace(status_code=200, json=lambda: {
             "access_token": f"APP_USR-access-{n}", "refresh_token": f"TG-refresh-{n}", "expires_in": 15552000,
-            "user_id": 555, "scope": "offline_access read write",
+            "user_id": 555, "scope": " ".join(f"urn:mp:online:permiso-{i}/read-write" for i in range(30)),
         })
 
 
@@ -377,3 +377,93 @@ def test_tarea_diaria_renueva_solo_las_que_vencen(garaje, admin_garaje, token_mp
     assert renovar_conexiones_mp() == 1
     assert ConexionMP.objects.get(garaje=otro).access_token == "APP_USR-access-1"
     assert ConexionMP.objects.get(garaje=garaje).access_token == "APP_USR-garaje-555"
+
+
+# ---------- Cancelación con reembolso ----------
+
+def reserva_pagada(cliente, garaje, mp, payment_id=123):
+    reserva = hold(garaje)
+    mp.aprobar(payment_id, reserva)
+    assert notificar(cliente, payment_id).status_code == 200
+    reserva.refresh_from_db()
+    assert reserva.estado == EstadoReserva.CONFIRMADA
+    return reserva
+
+
+def test_cancelar_reserva_pagada_reembolsa_todo(cliente, garaje, mp):
+    reserva = reserva_pagada(cliente, garaje, mp)
+    r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/cancelar/")
+    assert r.status_code == 200 and r.data["estado"] == "CANCELADA" and r.data["reembolso"] == "REEMBOLSADO"
+    assert mp.reembolsos == ["123"] and set(mp.tokens) == {"APP_USR-garaje-555"}
+    assert Pago.objects.get().resultado == ResultadoPago.REEMBOLSADO
+
+
+def test_no_se_cancela_dentro_de_las_2_horas_previas(cliente, garaje, mp):
+    reserva = reserva_pagada(cliente, garaje, mp)
+    with freeze_time(reserva.inicio - timedelta(hours=1, minutes=59)):
+        r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/cancelar/")
+    assert r.status_code == 409 and "2 h antes del inicio" in r.data["detail"]
+    reserva.refresh_from_db()
+    assert reserva.estado == EstadoReserva.CONFIRMADA and mp.reembolsos == []
+
+
+def test_reembolso_de_cancelacion_fallido_se_reintenta_solo(cliente, garaje, mp):
+    reserva = reserva_pagada(cliente, garaje, mp)
+    mp.falla_reembolso = True
+    r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/cancelar/")
+    assert r.data["estado"] == "CANCELADA" and r.data["reembolso"] == "REEMBOLSO_FALLIDO"
+    mp.falla_reembolso = False
+    assert reintentar_reembolsos() == 1
+    assert Pago.objects.get().resultado == ResultadoPago.REEMBOLSADO and mp.reembolsos == ["123"]
+    assert reintentar_reembolsos() == 0  # no reembolsa dos veces
+
+
+def test_reintento_no_reembolsa_una_reserva_que_termino_confirmada(cliente, garaje, mp):
+    reserva = reserva_pagada(cliente, garaje, mp)
+    Pago.objects.update(resultado=ResultadoPago.REEMBOLSO_FALLIDO)  # el webhook la confirmó al reintentar
+    assert reintentar_reembolsos() == 0 and mp.reembolsos == []
+
+
+def test_cancelar_con_garaje_desconectado_queda_pendiente(cliente, garaje, mp):
+    reserva = reserva_pagada(cliente, garaje, mp)
+    ConexionMP.objects.update(requiere_reautorizar=True)
+    r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/cancelar/")
+    assert r.data["estado"] == "CANCELADA" and r.data["reembolso"] == "REEMBOLSO_FALLIDO" and mp.reembolsos == []
+
+
+def reserva_pagada_en_una_hora(cliente, garaje, mp):
+    """Reserva sobre la hora: empieza en 1 h, o sea que ya está dentro del límite de 2 h antes del inicio."""
+    u, v = nuevo_conductor()
+    ahora = timezone.now()
+    reserva, _ = crear_hold(u, garaje.id, v.id, Modalidad.HORA, ahora + timedelta(hours=1), ahora + timedelta(hours=2))
+    mp.aprobar(321, reserva)
+    assert notificar(cliente, 321).status_code == 200
+    reserva.refresh_from_db()
+    return reserva
+
+
+def test_gracia_de_10_minutos_tras_pagar_aunque_falte_menos_de_2_h(cliente, garaje, mp):
+    reserva = reserva_pagada_en_una_hora(cliente, garaje, mp)
+    datos = cliente(reserva.conductor).get(f"/api/reservas/{reserva.id}/").data
+    assert datos["cancelable_hasta"] is not None
+    with freeze_time(timezone.now() + timedelta(minutes=9)):
+        r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/cancelar/")
+    assert r.status_code == 200 and r.data["reembolso"] == "REEMBOLSADO" and mp.reembolsos == ["321"]
+
+
+def test_pasada_la_gracia_y_dentro_de_las_2_h_no_se_cancela(cliente, garaje, mp):
+    reserva = reserva_pagada_en_una_hora(cliente, garaje, mp)
+    with freeze_time(timezone.now() + timedelta(minutes=11)):
+        r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/cancelar/")
+    assert r.status_code == 409 and "10 min siguientes al pago" in r.data["detail"] and mp.reembolsos == []
+
+
+def test_la_gracia_nunca_pasa_del_inicio(cliente, garaje, mp):
+    u, v = nuevo_conductor()
+    ahora = timezone.now()
+    reserva, _ = crear_hold(u, garaje.id, v.id, Modalidad.HORA, ahora + timedelta(minutes=3), ahora + timedelta(hours=1))
+    mp.aprobar(654, reserva)
+    notificar(cliente, 654)
+    with freeze_time(ahora + timedelta(minutes=4)):  # dentro de la gracia, pero la reserva ya empezó
+        r = cliente(u).post(f"/api/reservas/{reserva.id}/cancelar/")
+    assert r.status_code == 409 and mp.reembolsos == []

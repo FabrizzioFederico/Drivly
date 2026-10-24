@@ -10,9 +10,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from reservas.exceptions import EstadoInvalido, HoldVencidoSinCupo
-from reservas.models import Reserva
+from reservas.models import EstadoReserva, Reserva
 from reservas.services import confirmar_pago
 
+from .exceptions import GarajeSinMercadoPago
 from .models import ConexionMP, Pago, ResultadoPago
 from .oauth import access_token_de
 
@@ -200,3 +201,47 @@ def _reembolsar(pago, sdk):
         pago.resultado = ResultadoPago.REEMBOLSADO
         pago.reembolso_id = str(respuesta["response"].get("id", ""))
     pago.save(update_fields=["resultado", "reembolso_id", "actualizado_en"])
+
+
+# ---------- Reembolsos fuera del webhook ----------
+
+def reembolsar_cancelacion(reserva):
+    """
+    Reembolso total del pago de una reserva que el conductor canceló. Devuelve el Pago, o None si la reserva
+    no tiene un pago aprobado (p. ej. con pagos simulados). Si falla queda REEMBOLSO_FALLIDO y lo retoma
+    reintentar_reembolsos.
+    """
+    with transaction.atomic():
+        pago = Pago.objects.select_for_update().filter(
+            reserva=reserva, resultado=ResultadoPago.CONFIRMO_RESERVA
+        ).first()
+        if pago is None:
+            return None
+        _reembolsar_con_cuenta_del_garaje(pago, reserva.garaje)
+    return pago
+
+
+def _reembolsar_con_cuenta_del_garaje(pago, garaje):
+    try:
+        sdk = _sdk(access_token_de(garaje))
+    except GarajeSinMercadoPago:
+        logger.error("No se puede reembolsar el pago %s: el garaje %s perdió la conexión con MP",
+                     pago.payment_id, garaje.pk)
+        pago.resultado = ResultadoPago.REEMBOLSO_FALLIDO
+        pago.save(update_fields=["resultado", "actualizado_en"])
+        return
+    _reembolsar(pago, sdk)
+
+
+def reintentar_reembolsos() -> int:
+    """Tarea periódica: reintenta los reembolsos fallidos de reservas que ya no se van a confirmar."""
+    reembolsados = 0
+    for pago_id in Pago.objects.filter(resultado=ResultadoPago.REEMBOLSO_FALLIDO).values_list("pk", flat=True):
+        with transaction.atomic():
+            pago = Pago.objects.select_for_update().select_related("reserva__garaje").get(pk=pago_id)
+            # Otro proceso pudo resolverlo, o el webhook pudo confirmar la reserva si se liberó un lugar.
+            if pago.resultado != ResultadoPago.REEMBOLSO_FALLIDO or pago.reserva.estado == EstadoReserva.CONFIRMADA:
+                continue
+            _reembolsar_con_cuenta_del_garaje(pago, pago.reserva.garaje)
+            reembolsados += pago.resultado == ResultadoPago.REEMBOLSADO
+    return reembolsados

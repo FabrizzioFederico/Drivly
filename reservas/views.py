@@ -59,7 +59,18 @@ class ReservaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
 
     @action(detail=True, methods=["post"])
     def cancelar(self, request, pk=None):
-        return Response(ReservaSerializer(services.cancelar(self._mia())).data)
+        """
+        POST /api/reservas/{id}/cancelar/ -> reserva + `reembolso`:
+        REEMBOLSADO, REEMBOLSO_FALLIDO (se reintenta solo) o null si no había pago (hold o pagos simulados).
+        """
+        reserva = self._mia()
+        estaba_paga = reserva.estado == EstadoReserva.CONFIRMADA
+        reserva = services.cancelar(reserva)  # se confirma la cancelación antes de llamar a Mercado Pago
+        pago = None
+        if estaba_paga:
+            from pagos.services import reembolsar_cancelacion
+            pago = reembolsar_cancelacion(reserva)
+        return Response({**ReservaSerializer(reserva).data, "reembolso": pago.resultado if pago else None})
 
     @action(detail=True, methods=["post"])
     def pagar(self, request, pk=None):

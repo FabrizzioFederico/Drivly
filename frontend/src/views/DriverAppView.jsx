@@ -419,10 +419,34 @@ function useOnline() {
  * así funciona en un subsuelo sin señal (RFM-09). La seguridad la dan la firma, el estado
  * de la reserva y el control de patente del playero, no un código que cambie.
  */
-function TicketStep({ reserva, onBack }) {
+function TicketStep({ reserva, onBack, onCancelada }) {
   const cacheKey = `drivly.ticket.${reserva.id}`;
   const [qr, setQr] = useState(() => JSON.parse(localStorage.getItem(cacheKey) || 'null'));
   const online = useOnline();
+  const [confirmando, setConfirmando] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
+  const [errorCancelar, setErrorCancelar] = useState(null);
+  // El servidor decide hasta cuándo se puede cancelar con reembolso (2 h antes del inicio, o 10 min tras pagar)
+  const limiteCancelacion = reserva.cancelable_hasta ? new Date(reserva.cancelable_hasta).getTime() : null;
+  const [cancelable, setCancelable] = useState(() => limiteCancelacion !== null && Date.now() <= limiteCancelacion);
+
+  useEffect(() => { // el botón se oculta solo cuando vence el plazo
+    if (!cancelable) return undefined;
+    const t = setTimeout(() => { setCancelable(false); setConfirmando(false); }, limiteCancelacion - Date.now());
+    return () => clearTimeout(t);
+  }, [cancelable, limiteCancelacion]);
+
+  const cancelar = async () => {
+    setCancelando(true); setErrorCancelar(null);
+    try {
+      const r = await reservasService.cancelar(reserva.id);
+      localStorage.removeItem(cacheKey); // el QR de una reserva cancelada ya no sirve
+      onCancelada(r);
+    } catch (e) {
+      setErrorCancelar(e.message);
+      setCancelando(false);
+    }
+  };
 
   useEffect(() => {
     if (qr) return;
@@ -479,10 +503,34 @@ function TicketStep({ reserva, onBack }) {
         </div>
       </div>
 
-      <div className="mt-auto grid grid-cols-[1fr_auto] gap-2.5 px-5 pb-7 pt-4">
-        <a href={mapsUrl} target="_blank" rel="noreferrer" className="btn min-h-[56px] bg-white text-brand hover:text-brand-deep hover:no-underline">Abrir en Maps</a>
-        <button onClick={() => navigator.share?.({ title: 'Mi reserva Drivly', text: `${reserva.id} · ${g?.nombre ?? ''}` })} className="btn-ghost-dark min-h-[56px] border-white/40">Compartir</button>
-      </div>
+      {confirmando ? (
+        <div className="mt-auto flex flex-col gap-2.5 px-5 pb-7 pt-4" role="alertdialog" aria-labelledby="cancelar-titulo">
+          <p id="cancelar-titulo" className="text-center text-sm font-semibold text-white">
+            ¿Cancelar la reserva? Te devolvemos {ars(reserva.total)} a tu cuenta de Mercado Pago.
+          </p>
+          {errorCancelar && <p role="alert" className="rounded-card bg-debt-soft px-3 py-2 text-sm font-semibold text-debt-ink">{errorCancelar}</p>}
+          <div className="grid grid-cols-2 gap-2.5">
+            <button onClick={() => { setConfirmando(false); setErrorCancelar(null); }} disabled={cancelando} className="btn-ghost-dark min-h-[56px] border-white/40">No, volver</button>
+            <button onClick={cancelar} disabled={cancelando} className="btn min-h-[56px] bg-debt text-white">{cancelando ? 'Cancelando…' : 'Sí, cancelar'}</button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-auto flex flex-col gap-1 px-5 pb-5 pt-4">
+          <div className="grid grid-cols-[1fr_auto] gap-2.5">
+            <a href={mapsUrl} target="_blank" rel="noreferrer" className="btn min-h-[56px] bg-white text-brand hover:text-brand-deep hover:no-underline">Abrir en Maps</a>
+            <button onClick={() => navigator.share?.({ title: 'Mi reserva Drivly', text: `${reserva.id} · ${g?.nombre ?? ''}` })} className="btn-ghost-dark min-h-[56px] border-white/40">Compartir</button>
+          </div>
+          {cancelable ? (
+            <button onClick={() => setConfirmando(true)} className="min-h-touch text-sm font-semibold text-white/80 underline hover:text-white">
+              Cancelar reserva (reembolso total hasta las {hora(reserva.cancelable_hasta)})
+            </button>
+          ) : reserva.cancelable_hasta && (
+            <p className="py-2 text-center text-xs font-semibold text-white/70">
+              Ya no se puede cancelar: el plazo con reembolso venció a las {hora(reserva.cancelable_hasta)}.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -495,35 +543,63 @@ export default function DriverAppView() {
   const [horario, setHorario] = useState(defaultHorario);
   const [modalidad, setModalidad] = useState('HORA');
   const [vehiculo, setVehiculo] = useState(null); // se conserva si cambia de garaje
-
-  // Manejo del retorno desde Mercado Pago (Checkout Pro back_url)
-  useEffect(() => {
+  // Retorno desde Mercado Pago (Checkout Pro back_url + auto_return): se lee una sola vez al montar
+  const [retornoMP] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    const mpStatus    = params.get('collection_status') || params.get('mp_status');
     const externalRef = params.get('external_reference');
-    if (!externalRef) return;
+    if (!externalRef) return null;
+    const estado = params.get('collection_status') || params.get('mp_status');
+    return { externalRef, aprobado: estado === 'approved' || estado === 'success', pendiente: estado === 'pending' || estado === 'in_process' };
+  });
+  const [avisoMP, setAvisoMP] = useState(() => { // { error: bool, texto }
+    if (!retornoMP) return null;
+    if (retornoMP.aprobado) return { error: false, texto: 'Pago aprobado. Confirmando tu reserva…' };
+    return retornoMP.pendiente
+      ? { error: false, texto: 'Tu pago está pendiente de acreditación. La reserva se confirma cuando Mercado Pago lo apruebe.' }
+      : { error: true, texto: 'El pago no se completó. Podés volver a intentarlo mientras el lugar siga retenido.' };
+  });
 
-    // Limpiar la URL — nunca confiar solo en los query params
+  useEffect(() => {
+    if (!retornoMP) return undefined;
+    // Limpiar la URL — nunca confiar solo en los query params: el estado real lo confirma el webhook
     window.history.replaceState({}, '', '/');
+    if (!retornoMP.aprobado) return undefined;
 
-    if (mpStatus === 'approved') {
-      reservasService.get(externalRef)
-        .then((r) => {
-          if (r.estado === 'CONFIRMADA' || r.estado === 'EN_CURSO') {
-            setReserva(r);
-            setStep('ticket');
-          }
-          // Si el estado sigue siendo HOLD, el webhook todavía no llegó.
-          // El usuario puede recargar en unos segundos.
-        })
-        .catch(() => {});
-    }
-  }, []);
+    // El conductor puede volver antes que el webhook: se consulta cada 2 s hasta que la reserva se confirme.
+    const { externalRef } = retornoMP;
+    let cancelado = false;
+    let intentos = 0;
+    const consultar = () => reservasService.get(externalRef)
+      .then((r) => {
+        if (cancelado) return;
+        if (r.estado === 'CONFIRMADA' || r.estado === 'EN_CURSO') {
+          setAvisoMP(null);
+          setReserva(r);
+          setStep('ticket');
+        } else if (r.estado === 'HOLD' && ++intentos < 15) {
+          setTimeout(consultar, 2000);
+        } else {
+          setAvisoMP({ error: true, texto: r.estado === 'HOLD'
+            ? 'Tu pago se está procesando. Recargá en unos minutos para ver la reserva confirmada.'
+            : 'No pudimos confirmar la reserva porque el lugar ya no estaba disponible. El reembolso es automático.' });
+        }
+      })
+      .catch(() => { if (!cancelado) setAvisoMP({ error: true, texto: 'No pudimos consultar tu reserva. Recargá la página e intentá nuevamente.' }); });
+    consultar();
+    return () => { cancelado = true; };
+  }, [retornoMP]);
 
   const elegirGaraje = (g) => { setGaraje(g); setStep('hold'); };
 
   return (
-    <div className="mx-auto h-[844px] max-h-[calc(100vh-88px)] w-full max-w-[390px] overflow-hidden rounded-[32px] shadow-2xl">
+    <div className="relative mx-auto h-[844px] max-h-[calc(100vh-88px)] w-full max-w-[390px] overflow-hidden rounded-[32px] shadow-2xl">
+      {avisoMP && (
+        <div role="status" aria-live="polite"
+          className={`absolute inset-x-3 top-3 z-[1000] flex items-start gap-2 rounded-card px-4 py-3 text-sm font-semibold shadow-lg ${avisoMP.error ? 'bg-debt-soft text-debt-ink' : 'bg-success-soft text-success-ink'}`}>
+          <span className="flex-1">{avisoMP.texto}</span>
+          <button onClick={() => setAvisoMP(null)} aria-label="Cerrar aviso" className="min-h-touch min-w-touch -my-2 -mr-2 text-lg leading-none">×</button>
+        </div>
+      )}
       {step === 'search' && (
         <SearchStep horario={horario} setHorario={setHorario} modalidad={modalidad} setModalidad={setModalidad} onSelect={elegirGaraje} />
       )}
@@ -532,7 +608,15 @@ export default function DriverAppView() {
           onBack={() => setStep('search')} onCambiarGaraje={elegirGaraje}
           onConfirmed={(r) => { setReserva({ ...r, garaje_detalle: r.garaje_detalle ?? garaje }); setStep('ticket'); }} />
       )}
-      {step === 'ticket' && <TicketStep reserva={reserva} onBack={() => setStep('search')} />}
+      {step === 'ticket' && (
+        <TicketStep reserva={reserva} onBack={() => setStep('search')} onCancelada={(r) => {
+          setReserva(null);
+          setStep('search');
+          setAvisoMP(r.reembolso === 'REEMBOLSO_FALLIDO'
+            ? { error: false, texto: `Reserva cancelada. El reembolso de ${ars(r.total)} se está procesando y llega en las próximas horas.` }
+            : { error: false, texto: r.reembolso ? `Reserva cancelada. Te devolvimos ${ars(r.total)} a tu cuenta de Mercado Pago.` : 'Reserva cancelada.' });
+        }} />
+      )}
     </div>
   );
 }
