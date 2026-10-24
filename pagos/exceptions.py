@@ -1,9 +1,4 @@
-from reservas.exceptions import ReservaError
-
-
-class GarajeSinMercadoPago(ReservaError):
-    default_detail = "Este garaje todavía no puede cobrar con Mercado Pago. Probá con otro garaje."
-    default_code = "GARAJE_SIN_MERCADO_PAGO"
+from reservas.exceptions import GarajeSinMercadoPago  # noqa: F401 — vive en reservas: también lo usa crear_hold
 
 
 class OAuthError(Exception):

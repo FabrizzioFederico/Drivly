@@ -40,6 +40,12 @@ def nuevo_conductor():
     return u, v
 
 
+@pytest.fixture(autouse=True)
+def _pagos_simulados(settings):
+    """Estos casos prueban capacidad y horarios, no cobros: el filtro por Mercado Pago se prueba en pagos/tests.py."""
+    settings.DRIVLY_PAGOS_SIMULADOS = True
+
+
 @pytest.fixture
 def garaje(admin_garaje):
     g = Garaje.objects.create(admin=admin_garaje, nombre="Palermo", cuit="30-71234567-1", direccion="Gorriti 4800",

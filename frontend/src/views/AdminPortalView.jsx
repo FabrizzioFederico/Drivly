@@ -499,8 +499,8 @@ function CobrosPanel({ garajeId, retorno }) {
         ) : (
           <p className="text-sm text-ink-muted">
             {estado.requiere_reautorizar
-              ? 'Mercado Pago pidió volver a autorizar a Drivly. Mientras tanto los conductores no pueden pagar reservas en este garaje.'
-              : 'Todavía no conectaste tu cuenta. Sin ella los conductores no pueden pagar reservas en este garaje.'}
+              ? 'Mercado Pago pidió volver a autorizar a Drivly. Mientras tanto tu garaje no aparece en las búsquedas de los conductores.'
+              : 'Todavía no conectaste tu cuenta. Hasta que lo hagas, tu garaje no aparece en las búsquedas de los conductores.'}
           </p>
         )}
         {estado && !estado.conectado && (

@@ -16,10 +16,11 @@ from rest_framework.exceptions import NotFound, ValidationError
 from garajes.models import Garaje, Tarifa
 from vehiculos.models import Vehiculo
 
-from .disponibilidad import cercanos_a
+from .disponibilidad import cercanos_a, que_pueden_cobrar
 from .exceptions import (
     DeudaPendiente,
     EstadoInvalido,
+    GarajeSinMercadoPago,
     HoldVencidoSinCupo,
     SinCupo,
     SinCupoAbonos,
@@ -77,6 +78,8 @@ def crear_hold(conductor, garaje_id, vehiculo_id, modalidad, inicio, fin=None):
         garaje = Garaje.objects.select_for_update().get(pk=garaje_id, activo=True)  # serializa por garaje
     except Garaje.DoesNotExist:
         raise NotFound("El garaje no existe o no está disponible.")
+    if not que_pueden_cobrar(Garaje.objects.filter(pk=garaje.pk)).exists():
+        raise GarajeSinMercadoPago()  # no se retiene un lugar que después no se va a poder pagar
     try:
         vehiculo = conductor.vehiculos.get(pk=vehiculo_id)
     except Vehiculo.DoesNotExist:

@@ -46,6 +46,11 @@ class EstadoInvalido(ReservaError):
     default_code = "ESTADO_INVALIDO"
 
 
+class GarajeSinMercadoPago(ReservaError):
+    default_detail = "Este garaje todavía no puede cobrar con Mercado Pago. Probá con otro garaje."
+    default_code = "GARAJE_SIN_MERCADO_PAGO"
+
+
 class HoldVencidoSinCupo(ReservaError):
     default_detail = "Pasaron los 5 minutos y el lugar ya fue tomado. Se reintegra el pago."
     default_code = "HOLD_VENCIDO_SIN_CUPO"

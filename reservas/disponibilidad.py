@@ -13,6 +13,16 @@ from .ocupacion import lugares_libres
 UNIDAD = {Modalidad.HORA: "/ 15 min", Modalidad.SEMANAL: "/ semana", Modalidad.MENSUAL: "/ mes", Modalidad.ANUAL: "/ año"}
 
 
+def que_pueden_cobrar(garajes):
+    """
+    Con pagos reales sólo se ofrecen los garajes con su cuenta de Mercado Pago conectada (el pago se acredita ahí).
+    Con pagos simulados (desarrollo sin MP) se ofrecen todos.
+    """
+    if settings.DRIVLY_PAGOS_SIMULADOS:
+        return garajes
+    return garajes.filter(conexion_mp__isnull=False, conexion_mp__requiere_reautorizar=False)
+
+
 def garajes_con_disponibilidad(lat, lng, ini, fin, modalidad=Modalidad.HORA, radio=None, excluir_id=None, solo_con_lugar=False):
     """
     Garajes activos que ofrecen la modalidad, dentro del radio, ordenados por distancia,
@@ -25,9 +35,9 @@ def garajes_con_disponibilidad(lat, lng, ini, fin, modalidad=Modalidad.HORA, rad
     precios = dict(
         Tarifa.objects.filter(modalidad=modalidad).values_list("garaje_id").annotate(p=Min(campo_precio))
     )
-    candidatos = Garaje.objects.filter(
+    candidatos = que_pueden_cobrar(Garaje.objects.filter(
         activo=True, id__in=precios.keys(), lat__range=(lat_min, lat_max), lng__range=(lng_min, lng_max)
-    )
+    ))
     if excluir_id:
         candidatos = candidatos.exclude(id=excluir_id)
 

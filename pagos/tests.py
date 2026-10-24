@@ -154,9 +154,9 @@ def test_calculo_de_comision(monto, comision):
     assert services.calcular_comision(Decimal(monto)) == Decimal(comision)
 
 
-def test_garaje_sin_mercado_pago_no_cobra(cliente, garaje, mp):
-    ConexionMP.objects.all().delete()
+def test_garaje_que_se_desconecta_despues_del_hold_no_cobra(cliente, garaje, mp):
     reserva = hold(garaje)
+    ConexionMP.objects.all().delete()
     r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/")
     assert r.status_code == 409 and r.data["code"] == "GARAJE_SIN_MERCADO_PAGO" and mp.preferencias == []
 
@@ -467,3 +467,37 @@ def test_la_gracia_nunca_pasa_del_inicio(cliente, garaje, mp):
     with freeze_time(ahora + timedelta(minutes=4)):  # dentro de la gracia, pero la reserva ya empezó
         r = cliente(u).post(f"/api/reservas/{reserva.id}/cancelar/")
     assert r.status_code == 409 and mp.reembolsos == []
+
+
+# ---------- Sólo se ofrecen garajes que pueden cobrar ----------
+
+def test_busqueda_y_cercanos_ocultan_garajes_sin_mercado_pago(cliente, garaje, admin_garaje, conductor):
+    sin_mp = Garaje.objects.create(admin=admin_garaje, nombre="Sin MP", cuit="30-71234567-1", direccion="Thames 1580",
+                                   lat=Decimal("-34.5878"), lng=Decimal("-58.4334"), capacidad=5)
+    Tarifa.objects.create(garaje=sin_mp, categoria="AUTO", precio_fraccion=Decimal("900"), fraccion_min=15, minimo_fracciones=1)
+    reautorizar = Garaje.objects.create(admin=admin_garaje, nombre="Reautorizar", cuit="30-71234567-1", direccion="x",
+                                        lat=Decimal("-34.5879"), lng=Decimal("-58.4300"), capacidad=5)
+    Tarifa.objects.create(garaje=reautorizar, categoria="AUTO", precio_fraccion=Decimal("900"), fraccion_min=15, minimo_fracciones=1)
+    c = conectar(reautorizar, mp_user_id="888")
+    c.requiere_reautorizar = True
+    c.save()
+    q = {"lat": "-34.5885", "lng": "-58.4305", "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
+    r = cliente(conductor).get("/api/garajes/disponibles/", q).data
+    assert [g["nombre"] for g in r] == ["Palermo"]
+    hold(garaje)  # Palermo (capacidad 1) queda lleno: los cercanos tampoco ofrecen garajes que no cobran
+    assert cliente(conductor).get(f"/api/garajes/{garaje.id}/cercanos/", q).data == []
+
+
+def test_no_se_retiene_lugar_en_garaje_sin_mercado_pago(cliente, garaje):
+    ConexionMP.objects.all().delete()
+    u, v = nuevo_conductor()
+    body = {"garaje": str(garaje.id), "vehiculo": str(v.id), "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
+    r = cliente(u).post("/api/reservas/hold/", body, format="json")
+    assert r.status_code == 409 and r.data["code"] == "GARAJE_SIN_MERCADO_PAGO" and not Reserva.objects.exists()
+
+
+def test_con_pagos_simulados_se_ofrecen_todos(cliente, garaje, conductor, settings):
+    settings.DRIVLY_PAGOS_SIMULADOS = True
+    ConexionMP.objects.all().delete()
+    q = {"lat": "-34.5885", "lng": "-58.4305", "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
+    assert [g["nombre"] for g in cliente(conductor).get("/api/garajes/disponibles/", q).data] == ["Palermo"]
