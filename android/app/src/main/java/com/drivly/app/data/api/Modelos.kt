@@ -7,7 +7,28 @@ import kotlinx.serialization.Serializable
 // porque Django los serializa como Decimal: se convierten recién al mostrarlos.
 
 @Serializable
-data class Usuario(val id: String, val email: String, val nombre: String = "", val rol: String)
+data class Usuario(
+    val id: String,
+    val email: String,
+    val nombre: String = "",
+    val rol: String,
+    val genero: String = "",
+    val telefono: String = "",
+    /** Ruta relativa (/api/media/...): se completa con el origen de BuildConfig.API_URL. */
+    val foto: String? = null,
+)
+
+@Serializable
+data class PedidoPerfil(val nombre: String, val genero: String, val telefono: String)
+
+@Serializable
+data class PedidoCambioEmail(val email: String)
+
+@Serializable
+data class PedidoCodigo(val codigo: String)
+
+@Serializable
+data class Detalle(val detail: String = "")
 
 @Serializable
 data class RespuestaLogin(val access: String, val refresh: String, val user: Usuario)

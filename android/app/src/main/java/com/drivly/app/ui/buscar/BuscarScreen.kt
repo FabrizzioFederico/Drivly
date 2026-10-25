@@ -70,7 +70,9 @@ import com.drivly.app.data.ubicacionActual
 import com.drivly.app.ui.ars
 import com.drivly.app.ui.components.LocalEspacioBarra
 import com.drivly.app.ui.components.Tarjeta
+import com.drivly.app.ui.components.bordeOscuro
 import com.drivly.app.ui.iso
+import com.drivly.app.ui.theme.DrivlyTheme
 import com.drivly.app.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
@@ -222,8 +224,9 @@ fun BuscarScreen(alElegir: (GarajeDisponible, Horario, Vehiculo?) -> Unit, mensa
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surface,
+                color = if (DrivlyTheme.colores.oscuro) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.surface,
                 shadowElevation = 4.dp,
+                border = bordeOscuro(),
             ) {
                 SelectorHorario(vm.horario, vm::cambiarHorario, Modifier.padding(12.dp))
             }

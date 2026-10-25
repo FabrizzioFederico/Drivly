@@ -34,6 +34,10 @@ class Sesion(private val context: Context) {
         }
     }
 
+    suspend fun guardarNombre(nombre: String) {
+        context.almacen.edit { it[claveNombre] = nombre }
+    }
+
     suspend fun cerrar() {
         accessEnMemoria = null
         context.almacen.edit { it.clear() }

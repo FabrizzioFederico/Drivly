@@ -2,6 +2,7 @@ import uuid
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
@@ -10,6 +11,23 @@ class Rol(models.TextChoices):
     CONDUCTOR = "CONDUCTOR", "Conductor"
     ADMIN_GARAJE = "ADMIN_GARAJE", "Administrador de garaje"
     PLAYERO = "PLAYERO", "Playero"
+
+
+class Genero(models.TextChoices):
+    FEMENINO = "FEMENINO", "Femenino"
+    MASCULINO = "MASCULINO", "Masculino"
+    NO_BINARIO = "NO_BINARIO", "No binario"
+    PREFIERO_NO_DECIR = "PREFIERO_NO_DECIR", "Prefiero no decirlo"
+
+
+validar_telefono = RegexValidator(
+    r"^\+?[0-9 ()-]{8,20}$", "Ingresá un teléfono válido, por ejemplo +54 9 11 1234-5678."
+)
+
+
+def ruta_foto(usuario, _nombre_original):
+    """Nombre nuevo en cada subida: así ninguna app ni navegador muestra la foto vieja desde su caché."""
+    return f"fotos/{usuario.id}/{uuid.uuid4().hex}.jpg"
 
 
 class UsuarioManager(BaseUserManager):
@@ -46,6 +64,9 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
     nombre = models.CharField(max_length=150, blank=True)
+    genero = models.CharField(max_length=20, choices=Genero.choices, blank=True, default="")
+    telefono = models.CharField(max_length=20, blank=True, default="", validators=[validar_telefono])
+    foto = models.ImageField(upload_to=ruta_foto, blank=True, default="")  # 512x512 JPEG (cuentas.perfil)
     rol = models.CharField(max_length=12, choices=Rol.choices, default=Rol.CONDUCTOR)
     google_sub = models.CharField(max_length=64, unique=True, null=True, blank=True)
     garaje = models.ForeignKey(
@@ -98,3 +119,16 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     @property
     def puede_declarar_categoria(self):
         return self.correcciones_categoria < self.MAX_CORRECCIONES_CATEGORIA
+
+
+class CambioEmail(models.Model):
+    """
+    Cambio de email pendiente de confirmar. El email es la identidad de la cuenta: el login con Google vincula
+    por email a quien entra por primera vez, así que nunca se cambia sin probar que el nuevo es de quien lo pide.
+    """
+
+    usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE, related_name="cambio_email")
+    email = models.EmailField()
+    codigo_hash = models.CharField(max_length=64)  # sha256: el código nunca se guarda en claro
+    expira = models.DateTimeField()
+    intentos = models.PositiveSmallIntegerField(default=0)

@@ -1,11 +1,19 @@
 from rest_framework import generics, status
+from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from . import perfil
 from .models import Usuario
-from .serializers import GoogleLoginSerializer, UsuarioSerializer
+from .serializers import (
+    ConfirmacionEmailSerializer,
+    GoogleLoginSerializer,
+    PedidoCambioEmailSerializer,
+    UsuarioSerializer,
+)
 from .services import usuario_desde_google, verificar_token_google
 
 
@@ -74,9 +82,43 @@ class DevLoginView(APIView):
 
 
 class MeView(generics.RetrieveUpdateAPIView):
-    """GET/PATCH /api/auth/me/ — datos del usuario logueado (sólo el nombre es editable)."""
+    """GET/PATCH /api/auth/me/ — datos del usuario logueado. Editables: nombre, género y teléfono."""
 
     serializer_class = UsuarioSerializer
 
     def get_object(self):
         return self.request.user
+
+
+class FotoPerfilView(APIView):
+    """PUT /api/auth/me/foto/ (multipart, campo `foto`) la reemplaza; DELETE la quita."""
+
+    parser_classes = [MultiPartParser]
+
+    def put(self, request):
+        archivo = request.FILES.get("foto")
+        if archivo is None:
+            raise ValidationError({"foto": "Elegí una imagen."})
+        return Response(UsuarioSerializer(perfil.guardar_foto(request.user, archivo)).data)
+
+    def delete(self, request):
+        return Response(UsuarioSerializer(perfil.borrar_foto(request.user)).data)
+
+
+class CambioEmailView(APIView):
+    """POST /api/auth/me/email/ {email} -> manda un código al email nuevo (el cambio todavía no se aplica)."""
+
+    def post(self, request):
+        datos = PedidoCambioEmailSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        email = perfil.pedir_cambio_email(request.user, datos.validated_data["email"])
+        return Response({"detail": f"Te mandamos un código a {email}."}, status=status.HTTP_202_ACCEPTED)
+
+
+class ConfirmarEmailView(APIView):
+    """POST /api/auth/me/email/confirmar/ {codigo} -> aplica el cambio y devuelve el usuario actualizado."""
+
+    def post(self, request):
+        datos = ConfirmacionEmailSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        return Response(UsuarioSerializer(perfil.confirmar_cambio_email(request.user, datos.validated_data["codigo"])).data)

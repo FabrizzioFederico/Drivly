@@ -8,6 +8,7 @@ __pycache__/
 .venv/
 venv/
 staticfiles/
+media/
 .pytest_cache/
 # Frontend
 frontend/node_modules/

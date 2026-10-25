@@ -89,6 +89,10 @@ USE_TZ = True  # la base guarda siempre UTC
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Fotos de perfil. Bajo /api/ para que pasen por el mismo proxy que la API (Vite en desarrollo, ngrok).
+# En producción las sirve el almacenamiento (S3, nginx...), no Django.
+MEDIA_URL = "/api/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 # --- DRF + JWT -------------------------------------------------------------
 REST_FRAMEWORK = {

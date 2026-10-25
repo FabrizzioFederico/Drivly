@@ -30,6 +30,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.drivly.app.ui.theme.DrivlyTheme
 
 data class ItemBarra(val ruta: String, val titulo: String, val icono: ImageVector, val iconoElegido: ImageVector)
 
@@ -85,9 +86,10 @@ fun BarraFlotante(
                 .padding(horizontal = 24.dp, vertical = margen)
                 .fillMaxWidth(),
             shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surface,
+            // En oscuro, gris un poco más claro que el fondo y borde fino: la sombra no se ve sobre negro
+            color = if (DrivlyTheme.colores.oscuro) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.surface,
             shadowElevation = 10.dp,
-            tonalElevation = 2.dp,
+            border = bordeOscuro(),
         ) {
             NavigationBar(
                 containerColor = Color.Transparent,

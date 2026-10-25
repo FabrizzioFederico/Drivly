@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="fondo_ventana">#FF121824</color>
+    <color name="fondo_ventana">#FF000000</color>
 </resources>

@@ -68,23 +68,25 @@ private val DarkColorScheme = darkColorScheme(
     onError = Color(0xFF3B0000),
     errorContainer = Color(0xFF7A1616),
     onErrorContainer = DebtSoft,
-    background = Ink,
-    onBackground = InkSoft,
-    surface = Ink900,
-    onSurface = InkSoft,
-    surfaceVariant = Ink700,
-    onSurfaceVariant = InkSubtle,
-    surfaceContainerLowest = Ink,
-    surfaceContainerLow = Ink900,
-    surfaceContainer = Ink800,
-    surfaceContainerHigh = Ink800,
-    surfaceContainerHighest = Ink700,
-    surfaceBright = Ink700,
-    surfaceDim = Ink,
-    outline = InkMuted,
-    outlineVariant = Ink700,
-    inverseSurface = InkSoft,
-    inverseOnSurface = Ink,
+    // Negro puro de fondo y grises neutros para las superficies (como X / Instagram, sin tinte azul).
+    // Las sombras no se ven sobre negro: las tarjetas se separan con un borde fino (ver Tarjeta).
+    background = Negro,
+    onBackground = BlancoTexto,
+    surface = Negro,
+    onSurface = BlancoTexto,
+    surfaceVariant = Negro700,
+    onSurfaceVariant = GrisTextoSecundario,
+    surfaceContainerLowest = Negro,
+    surfaceContainerLow = Negro900,
+    surfaceContainer = Negro800,
+    surfaceContainerHigh = Negro700,
+    surfaceContainerHighest = Negro600,
+    surfaceBright = Negro600,
+    surfaceDim = Negro,
+    outline = GrisContorno,
+    outlineVariant = GrisBorde,
+    inverseSurface = BlancoTexto,
+    inverseOnSurface = Negro,
     inversePrimary = Brand,
 )
 
@@ -107,6 +109,8 @@ data class DrivlyColores(
     val retenida: EstadoColores,
     val deuda: EstadoColores,
     val accion: Color,
+    /** En oscuro las elevaciones se reemplazan por bordes finos: las sombras no se ven sobre negro. */
+    val oscuro: Boolean,
 )
 
 private val ColoresClaros = DrivlyColores(
@@ -114,6 +118,7 @@ private val ColoresClaros = DrivlyColores(
     retenida = EstadoColores(HoldSoft, HoldInk, Hold),
     deuda = EstadoColores(DebtSoft, DebtInk, Debt),
     accion = Action,
+    oscuro = false,
 )
 
 private val ColoresOscuros = DrivlyColores(
@@ -121,6 +126,7 @@ private val ColoresOscuros = DrivlyColores(
     retenida = EstadoColores(Color(0xFF4A2A0A), HoldSoft, Hold),
     deuda = EstadoColores(Color(0xFF4A1414), DebtSoft, DebtLight),
     accion = Action,
+    oscuro = true,
 )
 
 val LocalDrivlyColores = staticCompositionLocalOf { ColoresClaros }

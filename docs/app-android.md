@@ -30,7 +30,10 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | POST | `auth/google/` | `{ "id_token": "<Credential Manager>" }` | `{ access, refresh, user }` — crea la cuenta como CONDUCTOR |
 | POST | `auth/dev-login/` | `{ "rol": "CONDUCTOR" }` | igual (sólo con `DEBUG=True`) |
 | POST | `auth/refresh/` | `{ "refresh": "..." }` | `{ access, refresh }` — el refresh rota: guardar el nuevo |
-| GET | `auth/me/` | — | usuario logueado |
+| GET/PATCH | `auth/me/` | `{ nombre?, genero?, telefono? }` | usuario logueado (`foto` es una ruta relativa: `/api/media/...`) |
+| PUT/DELETE | `auth/me/foto/` | multipart `foto` (JPG/PNG/WebP, máx. 5 MB) | la reemplaza (se guarda 512×512) / la quita |
+| POST | `auth/me/email/` | `{ email }` | manda un código de 6 dígitos al email nuevo (202) |
+| POST | `auth/me/email/confirmar/` | `{ codigo }` | aplica el cambio; vence en 15 min y admite 5 intentos |
 
 - Header: `Authorization: Bearer <access>`. El access dura 15 min y el refresh 7 días.
 - El client ID de Android tiene que estar en `GOOGLE_OAUTH_CLIENT_IDS` del backend (separado por comas, junto al web).

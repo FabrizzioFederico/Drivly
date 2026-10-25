@@ -1,8 +1,14 @@
 package com.drivly.app.data.api
 
+import okhttp3.MultipartBody
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
+import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -17,6 +23,24 @@ interface DrivlyApi {
 
     @GET("auth/me/")
     suspend fun yo(): Usuario
+
+    @PATCH("auth/me/")
+    suspend fun actualizarPerfil(@Body pedido: PedidoPerfil): Usuario
+
+    /** La foto se guarda recortada en 512x512; devuelve el usuario con la ruta nueva. */
+    @Multipart
+    @PUT("auth/me/foto/")
+    suspend fun subirFoto(@Part foto: MultipartBody.Part): Usuario
+
+    @DELETE("auth/me/foto/")
+    suspend fun borrarFoto(): Usuario
+
+    /** Manda un código al email nuevo; el cambio se aplica recién con confirmarEmail. */
+    @POST("auth/me/email/")
+    suspend fun pedirCambioEmail(@Body pedido: PedidoCambioEmail): Detalle
+
+    @POST("auth/me/email/confirmar/")
+    suspend fun confirmarEmail(@Body pedido: PedidoCodigo): Usuario
 
     /** Mis reservas, la más nueva primero (paginado de a 20). */
     @GET("reservas/")
