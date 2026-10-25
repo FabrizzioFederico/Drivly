@@ -102,7 +102,7 @@ def crear_hold(conductor, garaje_id, vehiculo_id, modalidad, inicio, fin=None):
 
     if lugares_libres(garaje, inicio, fin, modalidad, ahora) <= 0:
         error = SinCupoAbonos if modalidad in MODALIDADES_ABONO else SinCupo
-        raise error(cercanos=_cercanos_serializables(garaje, inicio, fin, modalidad))
+        raise error(cercanos=_cercanos_serializables(garaje, inicio, fin, modalidad, vehiculo.categoria))
 
     detalle = desglose(tarifa, inicio, fin)
     reserva = Reserva.objects.create(
@@ -137,10 +137,11 @@ def cotizar(conductor, garaje_id, vehiculo_id, modalidad, inicio, fin=None):
     return inicio, fin, desglose(tarifa, inicio, fin)
 
 
-def _cercanos_serializables(garaje, inicio, fin, modalidad):
+def _cercanos_serializables(garaje, inicio, fin, modalidad, categoria=None):
     from .serializers import GarajeDisponibleSerializer  # evita import circular
 
-    return GarajeDisponibleSerializer(cercanos_a(garaje, inicio, fin, modalidad), many=True).data
+    # Sólo garajes con tarifa para el vehículo: ofrecer uno donde no puede reservar no sirve
+    return GarajeDisponibleSerializer(cercanos_a(garaje, inicio, fin, modalidad, categoria), many=True).data
 
 
 # ---------- QR estático y firmado (RFM-09: funciona sin señal) ----------

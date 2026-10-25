@@ -50,7 +50,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.drivly.app.DrivlyApplication
-import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.data.api.Cotizacion
 import com.drivly.app.data.api.DrivlyApi
 import com.drivly.app.data.api.PedidoHold
@@ -60,6 +59,7 @@ import com.drivly.app.data.api.Vehiculo
 import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.ui.ars
 import com.drivly.app.ui.components.EstadoChip
+import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.ui.hora
 import com.drivly.app.ui.instante
 import com.drivly.app.ui.iso
@@ -74,6 +74,7 @@ class ReservarViewModel(
     private val garajeId: String,
     private val inicio: OffsetDateTime,
     private val fin: OffsetDateTime,
+    private val vehiculoInicial: String? = null,
 ) : ViewModel() {
     var vehiculos by mutableStateOf<List<Vehiculo>>(emptyList())
         private set
@@ -95,7 +96,11 @@ class ReservarViewModel(
 
     private fun cargarVehiculos() = tarea {
         vehiculos = api.vehiculos().results
-        if (elegido == null) vehiculos.firstOrNull { it.validado }?.let { elegir(it.id) }
+        // El que se usó para buscar (los precios de la lista eran los suyos), o el primero con categoría
+        if (elegido == null) {
+            (vehiculos.firstOrNull { it.id == vehiculoInicial && it.validado } ?: vehiculos.firstOrNull { it.validado })
+                ?.let { elegir(it.id) }
+        }
     }
 
     /** La tarifa depende de la categoría del vehículo: cada cambio vuelve a cotizar. */
@@ -155,12 +160,13 @@ fun ReservarScreen(
     direccion: String,
     inicio: OffsetDateTime,
     fin: OffsetDateTime,
+    vehiculoId: String?,
     alVolver: () -> Unit,
     alConfirmarSinPago: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as DrivlyApplication
-    val vm: ReservarViewModel = viewModel { ReservarViewModel(app.api, garajeId, inicio, fin) }
+    val vm: ReservarViewModel = viewModel { ReservarViewModel(app.api, garajeId, inicio, fin, vehiculoId) }
     val reserva = vm.reserva
 
     // Con pagos simulados la reserva vuelve confirmada sin pasar por Mercado Pago

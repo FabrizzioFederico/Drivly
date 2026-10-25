@@ -9,30 +9,39 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.material3.BottomSheetScaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.rememberBottomSheetScaffoldState
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -53,12 +63,15 @@ import com.drivly.app.data.POSICION_DEFECTO
 import com.drivly.app.data.Posicion
 import com.drivly.app.data.api.DrivlyApi
 import com.drivly.app.data.api.GarajeDisponible
+import com.drivly.app.data.api.Vehiculo
 import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.data.tienePermisoDeUbicacion
 import com.drivly.app.data.ubicacionActual
 import com.drivly.app.ui.ars
+import com.drivly.app.ui.components.LocalEspacioBarra
 import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.ui.iso
+import com.drivly.app.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
 import java.time.temporal.ChronoUnit
@@ -85,6 +98,12 @@ class BuscarViewModel(private val api: DrivlyApi) : ViewModel() {
     var garajes by mutableStateOf<List<GarajeDisponible>>(emptyList())
         private set
     var elegido by mutableStateOf<String?>(null)
+    /** Vehículos con categoría: sólo con ellos se puede reservar. */
+    var vehiculos by mutableStateOf<List<Vehiculo>>(emptyList())
+        private set
+    var vehiculo by mutableStateOf<Vehiculo?>(null)
+        private set
+    private var vehiculosCargados = false
     var cargando by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
@@ -100,12 +119,24 @@ class BuscarViewModel(private val api: DrivlyApi) : ViewModel() {
         buscar()
     }
 
+    fun elegirVehiculo(v: Vehiculo) {
+        vehiculo = v
+        buscar()
+    }
+
     fun buscar() {
         cargando = true
         error = null
         viewModelScope.launch {
             try {
-                garajes = api.disponibles(posicion.lat, posicion.lng, horario.inicio.iso(), horario.fin.iso())
+                if (!vehiculosCargados) {
+                    // Si falla, se busca igual sin vehículo (precios "desde")
+                    vehiculos = runCatching { api.vehiculos().results.filter { it.validado } }.getOrDefault(emptyList())
+                    vehiculo = vehiculos.firstOrNull()
+                    vehiculosCargados = true
+                }
+                garajes = api.disponibles(posicion.lat, posicion.lng, horario.inicio.iso(), horario.fin.iso(),
+                    vehiculo = vehiculo?.id)
                 if (garajes.none { it.id == elegido }) elegido = null
             } catch (e: Exception) {
                 error = e.comoErrorDrivly().message
@@ -125,7 +156,7 @@ private val ALTO_HORARIO = 150.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?, alMostrarMensaje: () -> Unit) {
+fun BuscarScreen(alElegir: (GarajeDisponible, Horario, Vehiculo?) -> Unit, mensaje: String?, alMostrarMensaje: () -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as DrivlyApplication
     val vm: BuscarViewModel = viewModel { BuscarViewModel(app.api) }
@@ -133,6 +164,9 @@ fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?
     val avisos = remember { SnackbarHostState() }
     val lista = rememberLazyListState()
     val hoja = rememberBottomSheetScaffoldState(snackbarHostState = avisos)
+    // BottomSheetScaffold no deja lugar para la barra de gestos ni para la barra flotante: se suma a mano
+    val debajo = LocalEspacioBarra.current + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val asomaHoja = ALTO_HOJA + debajo
 
     fun ubicarConGps() = alcance.launch {
         val real = ubicacionActual(context)
@@ -164,10 +198,15 @@ fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?
 
     BottomSheetScaffold(
         scaffoldState = hoja,
-        sheetPeekHeight = ALTO_HOJA,
-        topBar = { TopAppBar(title = { Text("Estacionar cerca") }) },
+        sheetPeekHeight = asomaHoja,
+        topBar = {
+            TopAppBar(
+                title = { Text("Estacionar cerca") },
+                actions = { SelectorVehiculo(vm.vehiculos, vm.vehiculo, vm::elegirVehiculo) },
+            )
+        },
         snackbarHost = { SnackbarHost(avisos) },
-        sheetContent = { HojaGarajes(vm, lista, alElegir) },
+        sheetContent = { HojaGarajes(vm, lista, debajo, alElegir) },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
             MapaGarajes(
@@ -176,7 +215,7 @@ fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?
                 elegido = vm.elegido,
                 alElegir = { vm.elegido = it },
                 margenSuperior = ALTO_HORARIO,
-                margenInferior = ALTO_HOJA,
+                margenInferior = asomaHoja,
                 margenDerecho = 56.dp, // botón de ubicación
                 modifier = Modifier.fillMaxSize(),
             )
@@ -190,7 +229,7 @@ fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?
             }
             SmallFloatingActionButton(
                 onClick = { if (tienePermisoDeUbicacion(context)) ubicarConGps() else pedirPermiso.launch(PERMISOS_UBICACION) },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = ALTO_HOJA + 12.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = asomaHoja + 12.dp),
             ) { Icon(Icons.Filled.MyLocation, contentDescription = "Buscar cerca de mi ubicación") }
         }
     }
@@ -198,7 +237,12 @@ fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?
 
 /** Contenido de la hoja: encabezado con la cantidad y la lista ordenada por distancia. */
 @Composable
-private fun HojaGarajes(vm: BuscarViewModel, lista: LazyListState, alElegir: (GarajeDisponible, Horario) -> Unit) {
+private fun HojaGarajes(
+    vm: BuscarViewModel,
+    lista: LazyListState,
+    debajo: Dp,
+    alElegir: (GarajeDisponible, Horario, Vehiculo?) -> Unit,
+) {
     Column(Modifier.fillMaxWidth().fillMaxHeight(0.75f)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -228,11 +272,12 @@ private fun HojaGarajes(vm: BuscarViewModel, lista: LazyListState, alElegir: (Ga
                 else -> LazyColumn(
                     Modifier.fillMaxSize(),
                     state = lista,
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + debajo),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(vm.garajes, key = { it.id }) { g ->
-                        TarjetaGaraje(g, elegido = g.id == vm.elegido, onClick = { alElegir(g, vm.horario) })
+                        TarjetaGaraje(g, elegido = g.id == vm.elegido, precioExacto = vm.vehiculo != null,
+                            onClick = { alElegir(g, vm.horario, vm.vehiculo) })
                     }
                 }
             }
@@ -241,7 +286,7 @@ private fun HojaGarajes(vm: BuscarViewModel, lista: LazyListState, alElegir: (Ga
 }
 
 @Composable
-private fun TarjetaGaraje(g: GarajeDisponible, elegido: Boolean, onClick: () -> Unit) {
+private fun TarjetaGaraje(g: GarajeDisponible, elegido: Boolean, precioExacto: Boolean, onClick: () -> Unit) {
     val lleno = g.lugaresLibres <= 0
     Tarjeta(
         Modifier.fillMaxWidth(),
@@ -257,11 +302,36 @@ private fun TarjetaGaraje(g: GarajeDisponible, elegido: Boolean, onClick: () -> 
             }
             Text(g.direccion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Desde ${ars(g.precioDesde)} ${g.precioUnidad}", style = MaterialTheme.typography.titleSmall)
+                // Con vehículo el precio es el de su categoría; sin él, el más barato del garaje
+                Text("${if (precioExacto) "" else "Desde "}${ars(g.precioDesde)} ${g.precioUnidad}",
+                    style = MaterialTheme.typography.titleSmall)
                 Text(
                     if (lleno) "Sin lugar" else "${g.lugaresLibres} libres",
                     style = MaterialTheme.typography.labelLarge,
                     color = if (lleno) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+/** Chip con la patente del vehículo con el que se cotiza; si hay más de uno, abre un menú para cambiarlo. */
+@Composable
+private fun SelectorVehiculo(vehiculos: List<Vehiculo>, actual: Vehiculo?, alElegir: (Vehiculo) -> Unit) {
+    if (actual == null) return
+    var abierto by remember { mutableStateOf(false) }
+    Box(Modifier.padding(end = 8.dp)) {
+        AssistChip(
+            onClick = { if (vehiculos.size > 1) abierto = true },
+            label = { Text(actual.patente, fontFamily = JetBrainsMono) },
+            leadingIcon = { Icon(Icons.Filled.DirectionsCar, null, Modifier.size(AssistChipDefaults.IconSize)) },
+            trailingIcon = if (vehiculos.size > 1) ({ Icon(Icons.Filled.ArrowDropDown, null) }) else null,
+        )
+        DropdownMenu(expanded = abierto, onDismissRequest = { abierto = false }) {
+            vehiculos.forEach { v ->
+                DropdownMenuItem(
+                    text = { Text("${v.patente} · ${v.categoria?.lowercase()?.replaceFirstChar { it.uppercase() } ?: ""}") },
+                    onClick = { abierto = false; alElegir(v) },
                 )
             }
         }

@@ -36,6 +36,8 @@ interface DrivlyApi {
         @Query("fin") fin: String,
         @Query("radio") radio: Int = 1000,
         @Query("modalidad") modalidad: String = "HORA",
+        /** Con el vehículo, el precio es el de su categoría y no aparecen garajes sin tarifa para él. */
+        @Query("vehiculo") vehiculo: String? = null,
     ): List<GarajeDisponible>
 
     /** Precio estimado sin retener el lugar (se muestra antes del botón "Retener"). */

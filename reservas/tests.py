@@ -465,3 +465,50 @@ def test_cotizar_vehiculo_ajeno(cliente, conductor_v, garaje):
     otro, _ = nuevo_conductor()
     q = {"garaje": str(garaje.id), "vehiculo": str(v.id), "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
     assert cliente(otro).get("/api/reservas/cotizar/", q).status_code == 400
+
+
+# ---------- Precios según el vehículo del conductor ----------
+
+def _moto_barata(garaje):
+    Tarifa.objects.create(garaje=garaje, categoria="MOTO", precio_fraccion=Decimal("500"), fraccion_min=15, minimo_fracciones=1)
+
+
+def test_disponibles_con_vehiculo_muestra_el_precio_de_su_categoria(cliente, conductor_v, garaje):
+    _moto_barata(garaje)
+    u, v = conductor_v
+    q = {"lat": "-34.5885", "lng": "-58.4305", "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
+    sin_vehiculo = cliente(u).get("/api/garajes/disponibles/", q).data
+    assert Decimal(sin_vehiculo[0]["precio_desde"]) == Decimal("500")  # el más barato de todas las categorías
+    con_vehiculo = cliente(u).get("/api/garajes/disponibles/", {**q, "vehiculo": str(v.id)}).data
+    assert Decimal(con_vehiculo[0]["precio_desde"]) == Decimal("1000")  # lo que paga su auto
+
+
+def test_disponibles_oculta_garajes_sin_tarifa_para_el_vehiculo(cliente, conductor_v, garaje, admin_garaje):
+    solo_motos = Garaje.objects.create(admin=admin_garaje, nombre="Solo motos", cuit="30-71234567-1", direccion="x",
+                                       lat=Decimal("-34.5879"), lng=Decimal("-58.4300"), capacidad=5)
+    _moto_barata(solo_motos)
+    u, v = conductor_v
+    q = {"lat": "-34.5885", "lng": "-58.4305", "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
+    assert {g["nombre"] for g in cliente(u).get("/api/garajes/disponibles/", q).data} == {"Palermo", "Solo motos"}
+    con_vehiculo = cliente(u).get("/api/garajes/disponibles/", {**q, "vehiculo": str(v.id)}).data
+    assert [g["nombre"] for g in con_vehiculo] == ["Palermo"]
+
+
+def test_disponibles_ignora_vehiculo_ajeno_o_invalido(cliente, conductor_v, garaje):
+    _moto_barata(garaje)
+    otro, v_otro = nuevo_conductor()
+    u, _ = conductor_v
+    q = {"lat": "-34.5885", "lng": "-58.4305", "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
+    for vehiculo in (str(v_otro.id), "no-es-un-uuid"):
+        r = cliente(u).get("/api/garajes/disponibles/", {**q, "vehiculo": vehiculo})
+        assert r.status_code == 200 and Decimal(r.data[0]["precio_desde"]) == Decimal("500")
+
+
+def test_sin_cupo_sugiere_solo_garajes_con_tarifa_para_el_vehiculo(cliente, conductor_v, garaje, admin_garaje):
+    ocupar(garaje, manana(14), manana(16))
+    ocupar(garaje, manana(14), manana(16))
+    solo_motos = Garaje.objects.create(admin=admin_garaje, nombre="Solo motos", cuit="30-71234567-1", direccion="x",
+                                       lat=Decimal("-34.5879"), lng=Decimal("-58.4300"), capacidad=5)
+    _moto_barata(solo_motos)
+    r = pedir(cliente, conductor_v, garaje, manana(15), manana(15, 30))
+    assert r.status_code == 409 and r.data["code"] == "SIN_CUPO" and r.data["cercanos"] == []

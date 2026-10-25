@@ -42,6 +42,7 @@ import com.drivly.app.data.api.Reserva
 import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.ui.ars
 import com.drivly.app.ui.components.EstadoChip
+import com.drivly.app.ui.components.LocalEspacioBarra
 import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.ui.fechaHora
 import com.drivly.app.ui.hora
@@ -100,7 +101,7 @@ fun MisReservasScreen(alAbrirTicket: (String) -> Unit) {
                 }
                 else -> LazyColumn(
                     Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + LocalEspacioBarra.current),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(reservas, key = { it.id }) { r -> FilaReserva(r, alAbrirTicket) }

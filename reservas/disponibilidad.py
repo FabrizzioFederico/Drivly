@@ -23,18 +23,22 @@ def que_pueden_cobrar(garajes):
     return garajes.filter(conexion_mp__isnull=False, conexion_mp__requiere_reautorizar=False)
 
 
-def garajes_con_disponibilidad(lat, lng, ini, fin, modalidad=Modalidad.HORA, radio=None, excluir_id=None, solo_con_lugar=False):
+def garajes_con_disponibilidad(lat, lng, ini, fin, modalidad=Modalidad.HORA, radio=None, excluir_id=None,
+                               solo_con_lugar=False, categoria=None):
     """
     Garajes activos que ofrecen la modalidad, dentro del radio, ordenados por distancia,
     con `lugares_libres` en todo el intervalo y el precio más bajo de esa modalidad.
+    Con `categoria` (la del vehículo del conductor) sólo entran los garajes con tarifa para ella y el precio
+    es el de esa categoría: sin ella, "desde" puede ser el de otra categoría más barata.
     """
     radio = radio or settings.DRIVLY_RADIO_CERCANOS_M
     lat, lng = Decimal(str(lat)), Decimal(str(lng))
     lat_min, lat_max, lng_min, lng_max = caja_alrededor(lat, lng, radio)
     campo_precio = "precio_fraccion" if modalidad == Modalidad.HORA else "precio_periodo"
-    precios = dict(
-        Tarifa.objects.filter(modalidad=modalidad).values_list("garaje_id").annotate(p=Min(campo_precio))
-    )
+    tarifas = Tarifa.objects.filter(modalidad=modalidad)
+    if categoria:
+        tarifas = tarifas.filter(categoria=categoria)
+    precios = dict(tarifas.values_list("garaje_id").annotate(p=Min(campo_precio)))
     candidatos = que_pueden_cobrar(Garaje.objects.filter(
         activo=True, id__in=precios.keys(), lat__range=(lat_min, lat_max), lng__range=(lng_min, lng_max)
     ))
@@ -57,7 +61,7 @@ def garajes_con_disponibilidad(lat, lng, ini, fin, modalidad=Modalidad.HORA, rad
     return sorted(resultado, key=lambda x: x["distancia_m"])
 
 
-def cercanos_a(garaje, ini, fin, modalidad=Modalidad.HORA):
+def cercanos_a(garaje, ini, fin, modalidad=Modalidad.HORA, categoria=None):
     return garajes_con_disponibilidad(
-        garaje.lat, garaje.lng, ini, fin, modalidad, excluir_id=garaje.id, solo_con_lugar=True
+        garaje.lat, garaje.lng, ini, fin, modalidad, excluir_id=garaje.id, solo_con_lugar=True, categoria=categoria
     )

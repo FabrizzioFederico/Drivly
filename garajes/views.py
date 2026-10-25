@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -103,14 +104,14 @@ class GarajeViewSet(viewsets.ModelViewSet):
         except (KeyError, InvalidOperation, ValueError):
             raise ValidationError("lat y lng son obligatorios y numéricos.")
         modalidad, ini, fin = _intervalo(p)
-        datos = garajes_con_disponibilidad(lat, lng, ini, fin, modalidad, radio)
+        datos = garajes_con_disponibilidad(lat, lng, ini, fin, modalidad, radio, categoria=_categoria(request))
         return Response(GarajeDisponibleSerializer(datos, many=True).data)
 
     @action(detail=True, methods=["get"])
     def cercanos(self, request, pk=None):
         """GET /api/garajes/{id}/cercanos/?inicio&fin&modalidad — garajes con lugar cerca de uno lleno."""
         modalidad, ini, fin = _intervalo(request.query_params)
-        datos = cercanos_a(self.get_object(), ini, fin, modalidad)
+        datos = cercanos_a(self.get_object(), ini, fin, modalidad, categoria=_categoria(request))
         return Response(GarajeDisponibleSerializer(datos, many=True).data)
 
     @action(detail=True, methods=["get"])
@@ -198,6 +199,21 @@ class TarifaViewSet(viewsets.ModelViewSet):
         if "garaje" in serializer.validated_data and serializer.validated_data["garaje"] != serializer.instance.garaje:
             raise PermissionDenied("Una tarifa no puede cambiar de garaje.")
         serializer.save()
+
+
+def _categoria(request):
+    """
+    Categoría del vehículo `?vehiculo=<id>` del conductor (opcional): con ella los precios son los que va a
+    pagar y no aparecen garajes sin tarifa para su vehículo. Un id ajeno o sin validar se ignora.
+    """
+    vehiculo_id = request.query_params.get("vehiculo")
+    if not vehiculo_id or request.user.rol != Rol.CONDUCTOR:
+        return None
+    try:
+        vehiculo = request.user.vehiculos.filter(pk=vehiculo_id).first()
+    except DjangoValidationError:  # id que no es un UUID
+        return None
+    return vehiculo.categoria if vehiculo and vehiculo.validado else None
 
 
 def _intervalo(params):

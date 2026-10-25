@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.drivly.app.BuildConfig
 import com.drivly.app.DrivlyApplication
 import com.drivly.app.data.api.Usuario
+import com.drivly.app.ui.components.LocalEspacioBarra
 import com.drivly.app.ui.components.Tarjeta
 import kotlinx.coroutines.launch
 
@@ -46,7 +47,7 @@ fun PerfilScreen() {
 
     Scaffold(topBar = { TopAppBar(title = { Text("Perfil") }) }) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            Modifier.fillMaxSize().padding(padding).padding(16.dp).padding(bottom = LocalEspacioBarra.current),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Tarjeta(Modifier.fillMaxWidth()) {

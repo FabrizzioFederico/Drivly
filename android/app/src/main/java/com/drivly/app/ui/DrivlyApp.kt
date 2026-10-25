@@ -3,7 +3,6 @@ package com.drivly.app.ui
 import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.Map
@@ -12,12 +11,8 @@ import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,8 +20,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -36,6 +32,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.drivly.app.DrivlyApplication
 import com.drivly.app.ui.buscar.BuscarScreen
+import com.drivly.app.ui.components.ALTO_BARRA_FLOTANTE
+import com.drivly.app.ui.components.BarraFlotante
+import com.drivly.app.ui.components.ItemBarra
+import com.drivly.app.ui.components.LocalEspacioBarra
+import com.drivly.app.ui.components.ScrollDeBarra
 import com.drivly.app.ui.login.LoginScreen
 import com.drivly.app.ui.pago.PagoResultadoScreen
 import com.drivly.app.ui.perfil.PerfilScreen
@@ -49,24 +50,23 @@ private object Rutas {
     const val BUSCAR = "buscar"
     const val RESERVAS = "reservas"
     const val PERFIL = "perfil"
-    const val RESERVAR = "reservar/{garajeId}?nombre={nombre}&direccion={direccion}&inicio={inicio}&fin={fin}"
+    const val RESERVAR = "reservar/{garajeId}?nombre={nombre}&direccion={direccion}&inicio={inicio}&fin={fin}&vehiculo={vehiculo}"
     const val PAGO = "pago/{reservaId}?estado={estado}"
     const val TICKET = "ticket/{reservaId}"
 
-    fun reservar(garajeId: String, nombre: String, direccion: String, inicio: OffsetDateTime, fin: OffsetDateTime) =
+    fun reservar(garajeId: String, nombre: String, direccion: String, inicio: OffsetDateTime, fin: OffsetDateTime,
+                 vehiculoId: String?) =
         "reservar/$garajeId?nombre=${Uri.encode(nombre)}&direccion=${Uri.encode(direccion)}" +
-            "&inicio=${Uri.encode(inicio.toString())}&fin=${Uri.encode(fin.toString())}"
+            "&inicio=${Uri.encode(inicio.toString())}&fin=${Uri.encode(fin.toString())}&vehiculo=${vehiculoId.orEmpty()}"
 
     fun pago(reservaId: String, estado: String?) = "pago/$reservaId?estado=${Uri.encode(estado.orEmpty())}"
     fun ticket(reservaId: String) = "ticket/$reservaId"
 }
 
-private data class Pestania(val ruta: String, val titulo: String, val icono: ImageVector, val iconoElegido: ImageVector)
-
 private val PESTANIAS = listOf(
-    Pestania(Rutas.BUSCAR, "Buscar", Icons.Outlined.Map, Icons.Filled.Map),
-    Pestania(Rutas.RESERVAS, "Mis reservas", Icons.Outlined.ConfirmationNumber, Icons.Filled.ConfirmationNumber),
-    Pestania(Rutas.PERFIL, "Perfil", Icons.Outlined.Person, Icons.Filled.Person),
+    ItemBarra(Rutas.BUSCAR, "Buscar", Icons.Outlined.Map, Icons.Filled.Map),
+    ItemBarra(Rutas.RESERVAS, "Mis reservas", Icons.Outlined.ConfirmationNumber, Icons.Filled.ConfirmationNumber),
+    ItemBarra(Rutas.PERFIL, "Perfil", Icons.Outlined.Person, Icons.Filled.Person),
 )
 
 /**
@@ -91,30 +91,18 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
     var mensaje by remember { mutableStateOf<String?>(null) }
     val actual by nav.currentBackStackEntryAsState()
     val rutaActual = actual?.destination?.route
+    // Sólo en las pestañas principales; reservar, pagar y el ticket usan toda la pantalla
+    val conBarra = PESTANIAS.any { it.ruta == rutaActual }
+    val scrollDeBarra = remember { ScrollDeBarra() }
+    // Al cambiar de pantalla la barra vuelve a mostrarse aunque se haya escondido bajando
+    LaunchedEffect(rutaActual) { scrollDeBarra.visible = true }
 
-    Scaffold(
-        bottomBar = {
-            // Sólo en las pestañas principales; reservar, pagar y el ticket usan toda la pantalla
-            if (PESTANIAS.any { it.ruta == rutaActual }) {
-                NavigationBar {
-                    PESTANIAS.forEach { p ->
-                        val elegida = p.ruta == rutaActual
-                        NavigationBarItem(
-                            selected = elegida,
-                            onClick = { nav.irAPestania(p.ruta) },
-                            icon = { Icon(if (elegida) p.iconoElegido else p.icono, contentDescription = null) },
-                            label = { Text(p.titulo) },
-                        )
-                    }
-                }
-            }
-        },
-    ) { padding ->
-        // Cada pantalla tiene su propio Scaffold: acá sólo se reserva el espacio de la barra inferior
-        NavHost(nav, startDestination = Rutas.BUSCAR, modifier = Modifier.padding(bottom = padding.calculateBottomPadding())) {
+    Box(Modifier.fillMaxSize().nestedScroll(scrollDeBarra)) {
+        CompositionLocalProvider(LocalEspacioBarra provides if (conBarra) ALTO_BARRA_FLOTANTE else 0.dp) {
+        NavHost(nav, startDestination = Rutas.BUSCAR) {
             composable(Rutas.BUSCAR) {
                 BuscarScreen(
-                    alElegir = { g, h -> nav.navigate(Rutas.reservar(g.id, g.nombre, g.direccion, h.inicio, h.fin)) },
+                    alElegir = { g, h, v -> nav.navigate(Rutas.reservar(g.id, g.nombre, g.direccion, h.inicio, h.fin, v?.id)) },
                     mensaje = mensaje,
                     alMostrarMensaje = { mensaje = null },
                 )
@@ -129,6 +117,7 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
                     direccion = a.getString("direccion").orEmpty(),
                     inicio = OffsetDateTime.parse(a.getString("inicio")),
                     fin = OffsetDateTime.parse(a.getString("fin")),
+                    vehiculoId = a.getString("vehiculo")?.ifBlank { null },
                     alVolver = { nav.popBackStack() },
                     alConfirmarSinPago = { id -> nav.irAlTicket(id) },
                 )
@@ -156,6 +145,14 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
                 )
             }
         }
+        }
+        BarraFlotante(
+            items = PESTANIAS,
+            rutaActual = rutaActual,
+            visible = conBarra && scrollDeBarra.visible,
+            alElegir = { nav.irAPestania(it) },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 
     // Mercado Pago volvió a la app: drivly://pago-resultado?collection_status=approved&external_reference=<id>
