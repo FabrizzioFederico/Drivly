@@ -1,5 +1,20 @@
 package com.drivly.app.ui.ticket
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.view.WindowManager
+import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.DisposableEffect
+import com.drivly.app.data.api.GarajeResumen
 import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.compose.foundation.Image
@@ -60,7 +75,8 @@ import java.time.OffsetDateTime
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TicketScreen(reservaId: String, alVolver: (mensaje: String?) -> Unit) {
-    val app = LocalContext.current.applicationContext as DrivlyApplication
+    val context = LocalContext.current
+    val app = context.applicationContext as DrivlyApplication
     val alcance = rememberCoroutineScope()
     var reserva by remember { mutableStateOf<Reserva?>(null) }
     var qr by remember { mutableStateOf<Qr?>(null) }
@@ -113,6 +129,7 @@ fun TicketScreen(reservaId: String, alVolver: (mensaje: String?) -> Unit) {
                     }
                     val token = qr?.qrToken
                     if (token != null) {
+                        BrilloMaximo() // el lector de la cochera lo toma mejor, sobre todo en un subsuelo oscuro
                         val imagen = remember(token) { generarQr(token, 640) }
                         // Fondo blanco siempre, también en modo oscuro: los lectores necesitan contraste
                         Box(Modifier.background(androidx.compose.ui.graphics.Color.White).padding(12.dp)) {
@@ -137,6 +154,20 @@ fun TicketScreen(reservaId: String, alVolver: (mensaje: String?) -> Unit) {
                             Text(it.direccion, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text("Pagado: ${ars(r.total)}", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                r.garaje?.let { g ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(onClick = { comoLlegar(context, g) }, modifier = Modifier.weight(1f).height(56.dp)) {
+                            Icon(Icons.Filled.Directions, contentDescription = null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Cómo llegar")
+                        }
+                        OutlinedButton(onClick = { compartir(context, r, g) }, modifier = Modifier.height(56.dp)) {
+                            Icon(Icons.Filled.Share, contentDescription = null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Compartir")
+                        }
                     }
                 }
                 if (cancelable) {
@@ -190,4 +221,40 @@ private fun generarQr(contenido: String, lado: Int): Bitmap {
     )
     val pixeles = IntArray(lado * lado) { i -> if (matriz[i % lado, i / lado]) 0xFF121824.toInt() else Color.WHITE }
     return Bitmap.createBitmap(pixeles, lado, lado, Bitmap.Config.ARGB_8888)
+}
+
+/** Brillo al máximo mientras el QR está en pantalla; al salir vuelve al brillo que eligió el usuario. */
+@Composable
+private fun BrilloMaximo() {
+    val ventana = LocalActivity.current?.window ?: return
+    DisposableEffect(ventana) {
+        val anterior = ventana.attributes.screenBrightness
+        ventana.attributes = ventana.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL }
+        onDispose { ventana.attributes = ventana.attributes.apply { screenBrightness = anterior } }
+    }
+}
+
+/**
+ * Abre la app de mapas que prefiera el conductor (Google Maps, Waze...) con el garaje marcado.
+ * Si no hay ninguna instalada, Google Maps en el navegador.
+ */
+private fun comoLlegar(context: Context, g: GarajeResumen) {
+    val etiqueta = Uri.encode("${g.nombre}, ${g.direccion}")
+    val geo = Intent(Intent.ACTION_VIEW, Uri.parse("geo:${g.lat},${g.lng}?q=${g.lat},${g.lng}($etiqueta)"))
+    try {
+        context.startActivity(geo)
+    } catch (e: ActivityNotFoundException) {
+        context.startActivity(Intent(Intent.ACTION_VIEW,
+            Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${g.lat},${g.lng}")))
+    }
+}
+
+private fun compartir(context: Context, r: Reserva, g: GarajeResumen) {
+    val texto = "Mi reserva en Drivly: ${g.nombre} (${g.direccion}), ${fechaHora(r.inicio)} a ${hora(r.fin)}. " +
+        "https://www.google.com/maps/search/?api=1&query=${g.lat},${g.lng}"
+    val envio = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, texto)
+    }
+    context.startActivity(Intent.createChooser(envio, "Compartir reserva"))
 }

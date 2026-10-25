@@ -38,6 +38,16 @@ interface DrivlyApi {
         @Query("modalidad") modalidad: String = "HORA",
     ): List<GarajeDisponible>
 
+    /** Precio estimado sin retener el lugar (se muestra antes del botón "Retener"). */
+    @GET("reservas/cotizar/")
+    suspend fun cotizar(
+        @Query("garaje") garaje: String,
+        @Query("vehiculo") vehiculo: String,
+        @Query("inicio") inicio: String,
+        @Query("fin") fin: String,
+        @Query("modalidad") modalidad: String = "HORA",
+    ): Cotizacion
+
     @POST("reservas/hold/")
     suspend fun crearHold(@Body pedido: PedidoHold): Reserva
 

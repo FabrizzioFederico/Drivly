@@ -83,6 +83,15 @@ data class Reserva(
 )
 
 @Serializable
+data class Cotizacion(
+    val total: String,
+    val fracciones: Int? = null,
+    @SerialName("fraccion_min") val fraccionMin: Int? = null,
+    @SerialName("precio_fraccion") val precioFraccion: String? = null,
+    @SerialName("minimo_aplicado") val minimoAplicado: Boolean = false,
+)
+
+@Serializable
 data class PedidoPago(val canal: String = "app")
 
 @Serializable

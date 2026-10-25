@@ -114,6 +114,29 @@ def crear_hold(conductor, garaje_id, vehiculo_id, modalidad, inicio, fin=None):
     return reserva, detalle
 
 
+def cotizar(conductor, garaje_id, vehiculo_id, modalidad, inicio, fin=None):
+    """
+    Precio que tendría la reserva, sin retener el lugar: la app lo muestra antes de que el conductor
+    toque "Retener". Mismas validaciones de vehículo, intervalo y tarifa que crear_hold; el monto final
+    se congela recién al crear el hold (regla 3), así que esto es una estimación.
+    Devuelve (inicio, fin, desglose).
+    """
+    garaje = Garaje.objects.filter(pk=garaje_id, activo=True).first()
+    if garaje is None:
+        raise NotFound("El garaje no existe o no está disponible.")
+    try:
+        vehiculo = conductor.vehiculos.get(pk=vehiculo_id)
+    except Vehiculo.DoesNotExist:
+        raise ValidationError({"vehiculo": "Elegí uno de tus vehículos."})
+    if not vehiculo.validado:
+        raise VehiculoSinCategoria()
+    inicio, fin = _validar_intervalo(modalidad, inicio, fin, timezone.now())
+    tarifa = garaje.tarifas.filter(categoria=vehiculo.categoria, modalidad=modalidad).first()
+    if tarifa is None:
+        raise SinTarifa()
+    return inicio, fin, desglose(tarifa, inicio, fin)
+
+
 def _cercanos_serializables(garaje, inicio, fin, modalidad):
     from .serializers import GarajeDisponibleSerializer  # evita import circular
 

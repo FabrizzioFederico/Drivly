@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Con el teléfono en modo oscuro la ventana arranca oscura (Compose elige la paleta con isSystemInDarkTheme) -->
+    <style name="Theme.Drivly" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/fondo_ventana</item>
+    </style>
+</resources>

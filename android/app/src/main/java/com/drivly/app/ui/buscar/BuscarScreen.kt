@@ -10,8 +10,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,7 +27,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -114,6 +118,11 @@ class BuscarViewModel(private val api: DrivlyApi) : ViewModel() {
 
 private val PERMISOS_UBICACION = arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
 
+/** Alto de la hoja plegada: el encabezado y la primera tarjeta, sin tapar demasiado el mapa. */
+private val ALTO_HOJA = 220.dp
+/** Lo que ocupa la tarjeta del horario sobre el mapa (para que el encuadre no deje garajes debajo). */
+private val ALTO_HORARIO = 150.dp
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?, alMostrarMensaje: () -> Unit) {
@@ -123,6 +132,7 @@ fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?
     val alcance = rememberCoroutineScope()
     val avisos = remember { SnackbarHostState() }
     val lista = rememberLazyListState()
+    val hoja = rememberBottomSheetScaffoldState(snackbarHostState = avisos)
 
     fun ubicarConGps() = alcance.launch {
         val real = ubicacionActual(context)
@@ -152,50 +162,77 @@ fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?
         if (i >= 0) lista.animateScrollToItem(i)
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(avisos) },
+    BottomSheetScaffold(
+        scaffoldState = hoja,
+        sheetPeekHeight = ALTO_HOJA,
         topBar = { TopAppBar(title = { Text("Estacionar cerca") }) },
+        snackbarHost = { SnackbarHost(avisos) },
+        sheetContent = { HojaGarajes(vm, lista, alElegir) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            SelectorHorario(vm.horario, vm::cambiarHorario, Modifier.padding(horizontal = 16.dp))
-
-            Box(Modifier.fillMaxWidth().height(260.dp).padding(top = 12.dp)) {
-                MapaGarajes(
-                    posicion = vm.posicion,
-                    garajes = vm.garajes,
-                    elegido = vm.elegido,
-                    alElegir = { vm.elegido = it },
-                    modifier = Modifier.fillMaxSize(),
-                )
-                SmallFloatingActionButton(
-                    onClick = { if (tienePermisoDeUbicacion(context)) ubicarConGps() else pedirPermiso.launch(PERMISOS_UBICACION) },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                ) { Icon(Icons.Filled.MyLocation, contentDescription = "Buscar cerca de mi ubicación") }
+        Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
+            MapaGarajes(
+                posicion = vm.posicion,
+                garajes = vm.garajes,
+                elegido = vm.elegido,
+                alElegir = { vm.elegido = it },
+                margenSuperior = ALTO_HORARIO,
+                margenInferior = ALTO_HOJA,
+                margenDerecho = 56.dp, // botón de ubicación
+                modifier = Modifier.fillMaxSize(),
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 4.dp,
+            ) {
+                SelectorHorario(vm.horario, vm::cambiarHorario, Modifier.padding(12.dp))
             }
+            SmallFloatingActionButton(
+                onClick = { if (tienePermisoDeUbicacion(context)) ubicarConGps() else pedirPermiso.launch(PERMISOS_UBICACION) },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = ALTO_HOJA + 12.dp),
+            ) { Icon(Icons.Filled.MyLocation, contentDescription = "Buscar cerca de mi ubicación") }
+        }
+    }
+}
 
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+/** Contenido de la hoja: encabezado con la cantidad y la lista ordenada por distancia. */
+@Composable
+private fun HojaGarajes(vm: BuscarViewModel, lista: LazyListState, alElegir: (GarajeDisponible, Horario) -> Unit) {
+    Column(Modifier.fillMaxWidth().fillMaxHeight(0.75f)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
                 when {
-                    vm.cargando && vm.garajes.isEmpty() -> CircularProgressIndicator()
-                    vm.error != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(vm.error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(24.dp))
-                        TextButton(onClick = vm::buscar) { Text("Reintentar") }
-                    }
-                    vm.garajes.isEmpty() -> Text(
-                        if (vm.posicion.esReal) "No hay garajes con Drivly a menos de 1 km de tu ubicación para ese horario."
-                        else "No hay garajes con Drivly en esta zona para ese horario.",
-                        textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    else -> LazyColumn(
-                        Modifier.fillMaxSize(),
-                        state = lista,
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(vm.garajes, key = { it.id }) { g ->
-                            TarjetaGaraje(g, elegido = g.id == vm.elegido, onClick = { alElegir(g, vm.horario) })
-                        }
+                    vm.cargando && vm.garajes.isEmpty() -> "Buscando garajes…"
+                    vm.garajes.size == 1 -> "1 garaje cerca"
+                    else -> "${vm.garajes.size} garajes cerca"
+                },
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            if (vm.cargando) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+        }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            when {
+                vm.error != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(vm.error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(24.dp))
+                    TextButton(onClick = vm::buscar) { Text("Reintentar") }
+                }
+                vm.garajes.isEmpty() && !vm.cargando -> Text(
+                    if (vm.posicion.esReal) "No hay garajes con Drivly a menos de 1 km de tu ubicación para ese horario."
+                    else "No hay garajes con Drivly en esta zona para ese horario.",
+                    textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                else -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    state = lista,
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(vm.garajes, key = { it.id }) { g ->
+                        TarjetaGaraje(g, elegido = g.id == vm.elegido, onClick = { alElegir(g, vm.horario) })
                     }
                 }
             }

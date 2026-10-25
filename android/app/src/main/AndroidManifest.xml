@@ -23,7 +23,7 @@
             android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.Drivly">
+            android:theme="@style/Theme.Drivly.Inicio">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

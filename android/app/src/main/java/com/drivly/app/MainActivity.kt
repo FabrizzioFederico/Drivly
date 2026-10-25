@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.drivly.app.ui.DrivlyApp
 import com.drivly.app.ui.theme.DrivlyTheme
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +16,7 @@ class MainActivity : ComponentActivity() {
     private val deepLinks = MutableStateFlow<Uri?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen() // antes de super.onCreate: muestra la "P" de Drivly mientras arranca la app
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) recibir(intent)

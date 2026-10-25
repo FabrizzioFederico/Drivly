@@ -2,6 +2,7 @@ package com.drivly.app.ui.buscar
 
 import android.graphics.Color
 import android.graphics.RectF
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -12,6 +13,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -43,10 +46,11 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 
 /**
- * Estilo vectorial de OpenFreeMap (datos de OpenStreetMap, sin API key). "positron" es claro y neutro,
- * para que se destaquen los puntos de Drivly. El servidor de tiles de openstreetmap.org no admite apps.
+ * Estilos vectoriales de OpenFreeMap (datos de OpenStreetMap, sin API key): "positron" en modo claro y "dark"
+ * en modo oscuro, neutros para que se destaquen los puntos de Drivly. openstreetmap.org no admite apps.
  */
-private const val ESTILO = "https://tiles.openfreemap.org/styles/positron"
+private const val ESTILO_CLARO = "https://tiles.openfreemap.org/styles/positron"
+private const val ESTILO_OSCURO = "https://tiles.openfreemap.org/styles/dark"
 private const val ZOOM = 14.5
 
 private const val FUENTE_GARAJES = "garajes"
@@ -66,6 +70,10 @@ fun MapaGarajes(
     elegido: String?,
     alElegir: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** Lo que tapan otros elementos sobre el mapa (tarjeta de horario arriba, hoja de garajes abajo). */
+    margenSuperior: Dp = 0.dp,
+    margenInferior: Dp = 0.dp,
+    margenDerecho: Dp = 0.dp,
 ) {
     val context = LocalContext.current
     // MapLibre se inicializa recién acá (carga su librería nativa): hacerlo al abrir la app demoraba el arranque
@@ -76,6 +84,8 @@ fun MapaGarajes(
     var mapa by remember { mutableStateOf<MapLibreMap?>(null) }
     var estilo by remember { mutableStateOf<Style?>(null) }
     val alElegirActual by rememberUpdatedState(alElegir)
+    // Sigue el modo oscuro del teléfono, igual que el resto de la app
+    val urlEstilo = if (isSystemInDarkTheme()) ESTILO_OSCURO else ESTILO_CLARO
 
     CicloDeVida(vista)
 
@@ -87,10 +97,6 @@ fun MapaGarajes(
                     m.uiSettings.isRotateGesturesEnabled = false
                     m.uiSettings.isTiltGesturesEnabled = false
                     m.cameraPosition = CameraPosition.Builder().target(LatLng(posicion.lat, posicion.lng)).zoom(ZOOM).build()
-                    m.setStyle(Style.Builder().fromUri(ESTILO)) { s ->
-                        agregarCapas(s)
-                        estilo = s
-                    }
                     m.addOnMapClickListener { punto ->
                         // Zona táctil de 48 dp alrededor del dedo: los puntos del mapa son chicos
                         val p = m.projection.toScreenLocation(punto)
@@ -105,6 +111,16 @@ fun MapaGarajes(
             }
         },
     )
+
+    // Estilo según el tema; al cambiarlo se vuelven a crear las capas y el efecto de abajo recarga los datos
+    LaunchedEffect(mapa, urlEstilo) {
+        val m = mapa ?: return@LaunchedEffect
+        estilo = null
+        m.setStyle(Style.Builder().fromUri(urlEstilo)) { s ->
+            agregarCapas(s)
+            estilo = s
+        }
+    }
 
     // Datos -> fuentes GeoJSON del estilo
     LaunchedEffect(estilo, garajes, elegido, posicion) {
@@ -129,8 +145,12 @@ fun MapaGarajes(
         } else {
             val limites = LatLngBounds.Builder().include(LatLng(posicion.lat, posicion.lng))
             garajes.forEach { limites.include(LatLng(it.lat.toDouble(), it.lng.toDouble())) }
-            val margen = (48 * context.resources.displayMetrics.density).toInt()
-            m.animateCamera(CameraUpdateFactory.newLatLngBounds(limites.build(), margen))
+            val d = context.resources.displayMetrics.density
+            val margen = (48 * d).toInt()
+            m.animateCamera(CameraUpdateFactory.newLatLngBounds(
+                limites.build(), margen, margen + (margenSuperior.value * d).toInt(),
+                margen + (margenDerecho.value * d).toInt(), margen + (margenInferior.value * d).toInt(),
+            ))
         }
     }
     LaunchedEffect(mapa, elegido) {

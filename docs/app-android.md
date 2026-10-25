@@ -43,6 +43,7 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | POST | `vehiculos/{id}/declarar/` | `{ "categoria": "AUTO" \| "CAMIONETA" }` si DataCar no respondió |
 | GET | `garajes/disponibles/?lat&lng&radio&inicio&fin&modalidad` | Búsqueda (sólo garajes que pueden cobrar) |
 | GET | `garajes/{id}/cercanos/?inicio&fin&modalidad` | Alternativas si el garaje está lleno |
+| GET | `reservas/cotizar/?garaje&vehiculo&modalidad&inicio&fin` | Precio estimado sin retener el lugar (`total`, `fracciones`, `precio_fraccion`) |
 | POST | `reservas/hold/` | `{ garaje, vehiculo, modalidad, inicio, fin? }` → retiene el lugar 5 min |
 | POST | `reservas/{id}/pagar/` | `{ "canal": "app" }` → `{ init_point }` |
 | GET | `reservas/{id}/` | Estado de la reserva (`HOLD`, `CONFIRMADA`, …) y `cancelable_hasta` |

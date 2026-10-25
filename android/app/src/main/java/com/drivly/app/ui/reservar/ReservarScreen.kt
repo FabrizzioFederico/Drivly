@@ -51,6 +51,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.drivly.app.DrivlyApplication
 import com.drivly.app.ui.components.Tarjeta
+import com.drivly.app.data.api.Cotizacion
 import com.drivly.app.data.api.DrivlyApi
 import com.drivly.app.data.api.PedidoHold
 import com.drivly.app.data.api.PedidoVehiculo
@@ -77,6 +78,10 @@ class ReservarViewModel(
     var vehiculos by mutableStateOf<List<Vehiculo>>(emptyList())
         private set
     var elegido by mutableStateOf<String?>(null)
+        private set
+    /** Precio estimado del vehículo elegido, antes de retener (null mientras carga o si falló). */
+    var cotizacion by mutableStateOf<Cotizacion?>(null)
+        private set
     var reserva by mutableStateOf<Reserva?>(null)
         private set
     var ocupado by mutableStateOf(false)
@@ -90,13 +95,24 @@ class ReservarViewModel(
 
     private fun cargarVehiculos() = tarea {
         vehiculos = api.vehiculos().results
-        if (elegido == null) elegido = vehiculos.firstOrNull { it.validado }?.id
+        if (elegido == null) vehiculos.firstOrNull { it.validado }?.let { elegir(it.id) }
+    }
+
+    /** La tarifa depende de la categoría del vehículo: cada cambio vuelve a cotizar. */
+    fun elegir(vehiculoId: String) {
+        elegido = vehiculoId
+        cotizacion = null
+        viewModelScope.launch {
+            // Si falla no se bloquea nada: el total aparece igual después de retener
+            cotizacion = runCatching { api.cotizar(garajeId, vehiculoId, inicio.iso(), fin.iso()) }.getOrNull()
+                ?.takeIf { elegido == vehiculoId }
+        }
     }
 
     fun agregarVehiculo(patente: String) = tarea {
         val nuevo = api.agregarVehiculo(PedidoVehiculo(patente))
         vehiculos = vehiculos + nuevo
-        if (nuevo.validado) elegido = nuevo.id
+        if (nuevo.validado) elegir(nuevo.id)
         else error = "No pudimos validar la categoría de ${nuevo.patente}. Declarala desde la web para poder reservar."
     }
 
@@ -169,6 +185,7 @@ fun ReservarScreen(
 
             if (reserva == null) {
                 SeccionVehiculos(vm)
+                vm.cotizacion?.let { PrecioEstimado(it) }
                 Button(
                     onClick = vm::retener,
                     enabled = !vm.ocupado && vm.elegido != null,
@@ -207,7 +224,7 @@ private fun SeccionVehiculos(vm: ReservarViewModel) {
                 Row(
                     Modifier.fillMaxWidth()
                         .selectable(selected = vm.elegido == v.id, enabled = v.validado, role = Role.RadioButton,
-                            onClick = { vm.elegido = v.id }),
+                            onClick = { vm.elegir(v.id) }),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     RadioButton(selected = vm.elegido == v.id, onClick = null, enabled = v.validado)
@@ -267,6 +284,29 @@ private fun ResumenHold(reserva: Reserva, alVencer: () -> Unit) {
                 Text("Total", style = MaterialTheme.typography.titleMedium)
                 Text(ars(reserva.total), style = MaterialTheme.typography.headlineSmall)
             }
+        }
+    }
+}
+
+/** Total estimado antes de retener: el monto definitivo se congela al crear el hold (regla 3). */
+@Composable
+private fun PrecioEstimado(c: Cotizacion) {
+    Tarjeta(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Total estimado", style = MaterialTheme.typography.titleMedium)
+                Text(ars(c.total), style = MaterialTheme.typography.headlineSmall)
+            }
+            if (c.fracciones != null && c.precioFraccion != null && c.fraccionMin != null) {
+                Text(
+                    "${c.fracciones} × ${ars(c.precioFraccion)} (fracciones de ${c.fraccionMin} min)" +
+                        if (c.minimoAplicado) " · incluye el mínimo del garaje" else "",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text("Sin cargos extra: la comisión de Drivly la paga el garaje.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

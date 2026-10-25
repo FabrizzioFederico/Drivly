@@ -57,6 +57,25 @@ class ReservaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
         )
         return Response({**ReservaSerializer(reserva).data, "desglose": detalle}, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated, EsConductor])
+    def cotizar(self, request):
+        """
+        GET /api/reservas/cotizar/?garaje&vehiculo&modalidad&inicio&fin -> precio estimado, sin retener el lugar.
+        Los montos van como texto, igual que `total` en las reservas.
+        """
+        datos = HoldSerializer(data=request.query_params)
+        datos.is_valid(raise_exception=True)
+        d = datos.validated_data
+        inicio, fin, detalle = services.cotizar(
+            request.user, d["garaje"], d["vehiculo"], d["modalidad"], d["inicio"], d.get("fin")
+        )
+        return Response({
+            "inicio": inicio, "fin": fin, "modalidad": detalle["modalidad"], "total": str(detalle["total"]),
+            "fracciones": detalle.get("fracciones"), "fraccion_min": detalle.get("fraccion_min"),
+            "precio_fraccion": str(detalle["precio_fraccion"]) if "precio_fraccion" in detalle else None,
+            "minimo_aplicado": detalle.get("minimo_aplicado", False),
+        })
+
     @action(detail=True, methods=["post"])
     def cancelar(self, request, pk=None):
         """

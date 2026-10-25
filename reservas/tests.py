@@ -432,3 +432,36 @@ def test_solo_conductores_crean_holds(cliente, garaje, conductor_v):
 def test_pagar_reserva_ajena(cliente, conductor_v, garaje):
     rid = pedir(cliente, conductor_v, garaje, manana(14), manana(15)).data["id"]
     assert cliente(nuevo_conductor()[0]).post(f"/api/reservas/{rid}/pagar/").status_code == 404
+
+
+# ---------- Cotización antes de retener ----------
+
+def test_cotizar_no_retiene_el_lugar(cliente, conductor_v, garaje):
+    u, v = conductor_v
+    q = {"garaje": str(garaje.id), "vehiculo": str(v.id), "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
+    r = cliente(u).get("/api/reservas/cotizar/", q)
+    assert r.status_code == 200, r.data
+    assert r.data["total"] == "4000.00" and r.data["fracciones"] == 4 and r.data["precio_fraccion"] == "1000.00"
+    assert not Reserva.objects.exists()
+
+
+def test_cotizar_abono_calcula_el_fin(cliente, conductor_v, garaje):
+    u, v = conductor_v
+    q = {"garaje": str(garaje.id), "vehiculo": str(v.id), "modalidad": "MENSUAL", "inicio": manana(9).isoformat()}
+    r = cliente(u).get("/api/reservas/cotizar/", q)
+    assert r.status_code == 200 and r.data["total"] == "150000.00" and r.data["fracciones"] is None
+
+
+def test_cotizar_sin_tarifa_para_la_categoria(cliente, garaje):
+    u, v = nuevo_conductor()
+    Vehiculo.objects.filter(id=v.id).update(categoria="CAMIONETA")
+    q = {"garaje": str(garaje.id), "vehiculo": str(v.id), "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
+    r = cliente(u).get("/api/reservas/cotizar/", q)
+    assert r.status_code == 409 and r.data["code"] == "SIN_TARIFA"
+
+
+def test_cotizar_vehiculo_ajeno(cliente, conductor_v, garaje):
+    _, v = conductor_v
+    otro, _ = nuevo_conductor()
+    q = {"garaje": str(garaje.id), "vehiculo": str(v.id), "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
+    assert cliente(otro).get("/api/reservas/cotizar/", q).status_code == 400
