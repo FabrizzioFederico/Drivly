@@ -7,6 +7,9 @@
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
+# Configuración personal de cada Android Studio (dispositivo elegido, plugins)
+/.idea/deploymentTargetSelector.xml
+/.idea/copilot*.xml
 .DS_Store
 /build
 /captures

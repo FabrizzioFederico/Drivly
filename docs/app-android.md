@@ -3,6 +3,19 @@
 La app Kotlin (carpeta `android/`, a crear) usa la misma API que la vista web del conductor
 (`frontend/src/views/DriverAppView.jsx`), que queda como referencia y para pruebas.
 
+## Configuración local
+
+En `android/local.properties` (no se sube al repo):
+
+```properties
+drivly.apiUrl=https://<dominio-ngrok>/api/
+drivly.googleWebClientId=<el mismo client ID web que VITE_GOOGLE_CLIENT_ID>
+```
+
+Para "Ingresar con Google" hay que crear además un **client ID de tipo Android** en Google Cloud Console
+(mismo proyecto que el web) con el paquete `com.drivly.app` y el SHA-1 del certificado
+(`./gradlew :app:signingReport`). La app pide el token con el client ID **web**, que es el que valida el backend.
+
 ## Base URL
 
 | Entorno | URL |
