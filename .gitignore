@@ -1,6 +1,8 @@
 # Secretos y datos locales
 .env
 .mp-integrate-progress.md
+# Documentación de trabajo (Word, PDF...). docs/app-android.md ya está en el repo y sigue versionado.
+docs/
 db.sqlite3
 # Python
 __pycache__/
