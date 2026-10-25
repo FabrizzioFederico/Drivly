@@ -1,5 +1,9 @@
 package com.drivly.app.ui.buscar
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,18 +11,19 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -29,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,21 +45,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.drivly.app.DrivlyApplication
-import com.drivly.app.ui.components.Tarjeta
-import com.drivly.app.data.Sesion
+import com.drivly.app.data.POSICION_DEFECTO
+import com.drivly.app.data.Posicion
 import com.drivly.app.data.api.DrivlyApi
 import com.drivly.app.data.api.GarajeDisponible
 import com.drivly.app.data.comoErrorDrivly
+import com.drivly.app.data.tienePermisoDeUbicacion
+import com.drivly.app.data.ubicacionActual
 import com.drivly.app.ui.ars
-import com.drivly.app.ui.hora
+import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.ui.iso
 import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
 import java.time.temporal.ChronoUnit
-
-/** Mientras no pidamos permiso de ubicación se busca alrededor del mismo punto que usa la web (Palermo). */
-private const val LAT_DEFECTO = -34.5889
-private const val LNG_DEFECTO = -58.4306
 
 /** Horario elegido; viaja a la pantalla de reserva. */
 data class Horario(val inicio: OffsetDateTime, val horas: Int) {
@@ -69,18 +73,26 @@ data class Horario(val inicio: OffsetDateTime, val horas: Int) {
     }
 }
 
-class BuscarViewModel(private val api: DrivlyApi, private val sesion: Sesion) : ViewModel() {
+class BuscarViewModel(private val api: DrivlyApi) : ViewModel() {
+    var posicion by mutableStateOf(POSICION_DEFECTO)
+        private set
     var horario by mutableStateOf(Horario.desdeAhora())
         private set
     var garajes by mutableStateOf<List<GarajeDisponible>>(emptyList())
         private set
+    var elegido by mutableStateOf<String?>(null)
     var cargando by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
         private set
 
-    fun elegirHoras(horas: Int) {
-        horario = Horario.desdeAhora(horas)
+    fun cambiarHorario(nuevo: Horario) {
+        horario = nuevo
+        buscar()
+    }
+
+    fun ubicar(nueva: Posicion) {
+        posicion = nueva
         buscar()
     }
 
@@ -89,7 +101,8 @@ class BuscarViewModel(private val api: DrivlyApi, private val sesion: Sesion) : 
         error = null
         viewModelScope.launch {
             try {
-                garajes = api.disponibles(LAT_DEFECTO, LNG_DEFECTO, horario.inicio.iso(), horario.fin.iso())
+                garajes = api.disponibles(posicion.lat, posicion.lng, horario.inicio.iso(), horario.fin.iso())
+                if (garajes.none { it.id == elegido }) elegido = null
             } catch (e: Exception) {
                 error = e.comoErrorDrivly().message
             } finally {
@@ -97,67 +110,91 @@ class BuscarViewModel(private val api: DrivlyApi, private val sesion: Sesion) : 
             }
         }
     }
-
-    fun cerrarSesion() = viewModelScope.launch { sesion.cerrar() }
 }
+
+private val PERMISOS_UBICACION = arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?, alMostrarMensaje: () -> Unit) {
-    val app = LocalContext.current.applicationContext as DrivlyApplication
-    val vm: BuscarViewModel = viewModel { BuscarViewModel(app.api, app.sesion) }
-    LaunchedEffect(Unit) { if (vm.garajes.isEmpty()) vm.buscar() }
+    val context = LocalContext.current
+    val app = context.applicationContext as DrivlyApplication
+    val vm: BuscarViewModel = viewModel { BuscarViewModel(app.api) }
+    val alcance = rememberCoroutineScope()
     val avisos = remember { SnackbarHostState() }
+    val lista = rememberLazyListState()
+
+    fun ubicarConGps() = alcance.launch {
+        val real = ubicacionActual(context)
+        if (real != null) vm.ubicar(real)
+        else avisos.showSnackbar("No pudimos obtener tu ubicación. Te mostramos garajes en Palermo.")
+    }
+
+    val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
+        if (r.values.any { it }) ubicarConGps()
+        else alcance.launch { avisos.showSnackbar("Sin permiso de ubicación te mostramos garajes en Palermo.") }
+    }
+
+    LaunchedEffect(Unit) {
+        if (vm.garajes.isNotEmpty()) return@LaunchedEffect
+        vm.buscar() // mientras tanto, alrededor de Palermo
+        if (tienePermisoDeUbicacion(context)) ubicarConGps() else pedirPermiso.launch(PERMISOS_UBICACION)
+    }
     LaunchedEffect(mensaje) {
         if (mensaje != null) {
             alMostrarMensaje()
             avisos.showSnackbar(mensaje)
         }
     }
+    // Tocar un punto del mapa lleva la lista hasta su tarjeta
+    LaunchedEffect(vm.elegido) {
+        val i = vm.garajes.indexOfFirst { it.id == vm.elegido }
+        if (i >= 0) lista.animateScrollToItem(i)
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(avisos) },
-        topBar = {
-            TopAppBar(
-                title = { Text("Estacionar cerca") },
-                actions = {
-                    IconButton(onClick = { vm.cerrarSesion() }) {
-                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Cerrar sesión")
-                    }
-                },
-            )
-        },
+        topBar = { TopAppBar(title = { Text("Estacionar cerca") }) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Desde las ${hora(vm.horario.inicio.toString())} hasta las ${hora(vm.horario.fin.toString())}",
-                    style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(1, 2, 3, 6).forEach { h ->
-                        FilterChip(selected = vm.horario.horas == h, onClick = { vm.elegirHoras(h) },
-                            label = { Text("$h h") })
-                    }
-                }
+            SelectorHorario(vm.horario, vm::cambiarHorario, Modifier.padding(horizontal = 16.dp))
+
+            Box(Modifier.fillMaxWidth().height(260.dp).padding(top = 12.dp)) {
+                MapaGarajes(
+                    posicion = vm.posicion,
+                    garajes = vm.garajes,
+                    elegido = vm.elegido,
+                    alElegir = { vm.elegido = it },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                SmallFloatingActionButton(
+                    onClick = { if (tienePermisoDeUbicacion(context)) ubicarConGps() else pedirPermiso.launch(PERMISOS_UBICACION) },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                ) { Icon(Icons.Filled.MyLocation, contentDescription = "Buscar cerca de mi ubicación") }
             }
 
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 when {
-                    vm.cargando -> CircularProgressIndicator()
+                    vm.cargando && vm.garajes.isEmpty() -> CircularProgressIndicator()
                     vm.error != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(vm.error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center,
                             modifier = Modifier.padding(24.dp))
                         TextButton(onClick = vm::buscar) { Text("Reintentar") }
                     }
-                    vm.garajes.isEmpty() -> Text("No hay garajes con Drivly en esta zona para ese horario.",
+                    vm.garajes.isEmpty() -> Text(
+                        if (vm.posicion.esReal) "No hay garajes con Drivly a menos de 1 km de tu ubicación para ese horario."
+                        else "No hay garajes con Drivly en esta zona para ese horario.",
                         textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     else -> LazyColumn(
                         Modifier.fillMaxSize(),
+                        state = lista,
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(vm.garajes, key = { it.id }) { g ->
-                            TarjetaGaraje(g, onClick = { alElegir(g, vm.horario) })
+                            TarjetaGaraje(g, elegido = g.id == vm.elegido, onClick = { alElegir(g, vm.horario) })
                         }
                     }
                 }
@@ -167,9 +204,14 @@ fun BuscarScreen(alElegir: (GarajeDisponible, Horario) -> Unit, mensaje: String?
 }
 
 @Composable
-private fun TarjetaGaraje(g: GarajeDisponible, onClick: () -> Unit) {
+private fun TarjetaGaraje(g: GarajeDisponible, elegido: Boolean, onClick: () -> Unit) {
     val lleno = g.lugaresLibres <= 0
-    Tarjeta(Modifier.fillMaxWidth(), onClick = onClick, enabled = !lleno) {
+    Tarjeta(
+        Modifier.fillMaxWidth(),
+        onClick = onClick,
+        enabled = !lleno,
+        borde = if (elegido) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(g.nombre, style = MaterialTheme.typography.titleMedium)

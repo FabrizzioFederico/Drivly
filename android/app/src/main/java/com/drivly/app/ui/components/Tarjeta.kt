@@ -1,5 +1,6 @@
 package com.drivly.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -14,13 +15,15 @@ fun Tarjeta(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     enabled: Boolean = true,
+    borde: BorderStroke? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colores = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     val elevacion = CardDefaults.cardElevation(defaultElevation = 2.dp)
     if (onClick != null) {
-        Card(onClick = onClick, modifier = modifier, enabled = enabled, colors = colores, elevation = elevacion, content = content)
+        Card(onClick = onClick, modifier = modifier, enabled = enabled, colors = colores, elevation = elevacion,
+            border = borde, content = content)
     } else {
-        Card(modifier = modifier, colors = colores, elevation = elevacion, content = content)
+        Card(modifier = modifier, colors = colores, elevation = elevacion, border = borde, content = content)
     }
 }

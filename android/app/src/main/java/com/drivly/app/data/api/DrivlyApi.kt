@@ -15,6 +15,13 @@ interface DrivlyApi {
     @POST("auth/google/")
     suspend fun googleLogin(@Body pedido: PedidoGoogleLogin): RespuestaLogin
 
+    @GET("auth/me/")
+    suspend fun yo(): Usuario
+
+    /** Mis reservas, la más nueva primero (paginado de a 20). */
+    @GET("reservas/")
+    suspend fun reservas(@Query("page") pagina: Int = 1): Pagina<Reserva>
+
     @GET("vehiculos/")
     suspend fun vehiculos(): Pagina<Vehiculo>
 

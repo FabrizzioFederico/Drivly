@@ -113,7 +113,9 @@ fun LoginScreen() {
                             try {
                                 pedirTokenDeGoogle(context)?.let(vm::conGoogle)
                             } catch (e: GetCredentialException) {
-                                vm.mostrarError("No se pudo iniciar sesión con Google. Intentá nuevamente.")
+                                // En debug se muestra el detalle: [28444] = falta el client ID Android (paquete + SHA-1)
+                                val detalle = if (BuildConfig.DEBUG) "\n(${e.type}: ${e.message})" else ""
+                                vm.mostrarError("No se pudo iniciar sesión con Google. Intentá nuevamente.$detalle")
                             } catch (e: GoogleIdTokenParsingException) {
                                 vm.mostrarError("Google devolvió una respuesta inválida. Intentá nuevamente.")
                             }
