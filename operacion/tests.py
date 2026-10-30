@@ -17,6 +17,7 @@ from reservas.models import EstadoReserva, Modalidad, Reserva
 from vehiculos.models import Vehiculo
 
 from .models import Deuda, EstadoDeuda, Incidente, MedioCobro, Movimiento, TipoMovimiento
+from .services import marcar_incobrables, recordar_deudas
 
 pytestmark = pytest.mark.django_db
 
@@ -205,11 +206,12 @@ def test_pago_mp_de_deuda_ya_cobrada_en_efectivo_se_reembolsa(cliente, playero, 
 MIS_DEUDAS = "/api/operacion/mis-deudas/"
 
 
-def con_deuda(garaje, vehiculo):
+def con_deuda(garaje, vehiculo, horas=0):
     r = crear_reserva(garaje, vehiculo, en(-100), en(-40), EstadoReserva.CON_DEUDA)
     Deuda.objects.create(
-        reserva=r, patente=vehiculo.patente, egreso_real=en(0), minutos_excedidos=30, tolerancia_min=10,
+        reserva=r, patente=vehiculo.patente, egreso_real=en(-horas * 60), minutos_excedidos=30, tolerancia_min=10,
         fraccion_min=15, fracciones=2, precio_fraccion=1000, recargo=Decimal("0.50"), monto=3000,
+        vence_bloqueo=en((72 - horas) * 60),
     )
     return r
 
@@ -255,6 +257,236 @@ def test_cu09_garaje_sin_mercado_pago_no_ofrece_otro_garaje(cliente, conductor, 
     r = con_deuda(garaje, vehiculo)
     res = cliente(conductor).post(f"{MIS_DEUDAS}{r.id}/pagar/", {"canal": "app"}, format="json")
     assert res.status_code == 409 and "en persona" in res.data["detail"]
+
+
+# ---------- Overstay impago (regla 4) ----------
+
+def otro_vehiculo_con_la_patente(crear_usuario, vehiculo):
+    """Misma patente en otra cuenta: el conductor original ya no la tiene a su nombre."""
+    Vehiculo.objects.filter(pk=vehiculo.pk).update(patente="ZZ999ZZ")
+    return Vehiculo.objects.create(conductor=crear_usuario("nueva@test.com"), patente="AB123CD", categoria="AUTO",
+                                   categoria_origen="DATACAR", estado_validacion="VALIDADO")
+
+
+def test_egreso_fija_el_vencimiento_del_bloqueo(cliente, playero, garaje, vehiculo, settings):
+    settings.DRIVLY_PAGOS_SIMULADOS = True
+    r = crear_reserva(garaje, vehiculo, en(-100), en(-40), EstadoReserva.EN_CURSO)
+    escanear(cliente(playero), EGRESO, garaje, r)
+    d = Deuda.objects.get(reserva=r)
+    assert d.vence_bloqueo == d.egreso_real + timedelta(hours=72)
+
+
+def test_cp30_deuda_vencida_sigue_a_la_patente_sin_reserva(cliente, playero, garaje, vehiculo, settings):
+    settings.DRIVLY_PAGOS_SIMULADOS = True
+    r = con_deuda(garaje, vehiculo, horas=73)
+    res = cliente(playero).post(INGRESO, {"garaje": str(garaje.id), "patente": "AB123CD",
+                                          "salida_estimada": en(60).isoformat()}, format="json")
+    assert res.status_code == 402 and res.data["code"] == "DEUDA_PATENTE"
+    assert res.data["deuda"]["reserva_id"] == r.id and res.data["deuda"]["efectivo"] is True
+    assert not Reserva.objects.filter(modalidad=Modalidad.PRESENCIAL).exists()
+
+
+def test_cp30_antes_de_las_72_h_no_sigue_a_la_patente(cliente, playero, garaje, vehiculo):
+    con_deuda(garaje, vehiculo, horas=71)
+    res = cliente(playero).post(INGRESO, {"garaje": str(garaje.id), "patente": "AB123CD",
+                                          "salida_estimada": en(60).isoformat()}, format="json")
+    assert res.status_code == 200
+
+
+def test_cp30_no_alcanza_con_otra_cuenta(cliente, playero, garaje, vehiculo, crear_usuario, settings):
+    settings.DRIVLY_PAGOS_SIMULADOS = True
+    con_deuda(garaje, vehiculo, horas=73)
+    nueva = crear_reserva(garaje, otro_vehiculo_con_la_patente(crear_usuario, vehiculo), en(-1), en(60))
+    res = escanear(cliente(playero), INGRESO, garaje, nueva)
+    assert res.status_code == 402 and res.data["code"] == "DEUDA_PATENTE"
+    nueva.refresh_from_db()
+    assert nueva.estado == EstadoReserva.CONFIRMADA
+
+
+def test_cp30_otro_garaje_cobra_por_qr_a_favor_del_dueno(cliente, otro_admin, crear_usuario, garaje, vehiculo, mp):  # noqa: F811
+    conectar(garaje)
+    otro = Garaje.objects.create(admin=otro_admin, nombre="B", cuit=garaje.cuit, direccion="x",
+                                 lat=garaje.lat, lng=garaje.lng, capacidad=5)
+    c = cliente(crear_usuario("pepa@test.com", rol=Rol.PLAYERO, garaje=otro))
+    r = con_deuda(garaje, vehiculo, horas=73)
+    res = c.post(INGRESO, {"garaje": str(otro.id), "patente": "AB123CD",
+                           "salida_estimada": en(60).isoformat()}, format="json")
+    assert res.data["deuda"]["efectivo"] is False and res.data["deuda"]["mp_qr_data"] == "https://mp/checkout"
+    assert res.data["deuda"]["garaje_nombre"] == garaje.nombre
+    assert mp.preferencias[-1]["external_reference"] == f"deuda:{r.id}"
+    url = f"/api/operacion/deudas/{r.id}/"
+    assert c.get(url).data["pagado"] is False  # puede seguir el pago del QR
+    assert c.post(f"{url}efectivo/").status_code == 404  # pero no quedarse con el efectivo de otro garaje
+
+
+def test_cp30_antes_de_vencer_otro_garaje_no_ve_la_deuda(cliente, otro_admin, crear_usuario, garaje, vehiculo):
+    otro = Garaje.objects.create(admin=otro_admin, nombre="B", cuit=garaje.cuit, direccion="x",
+                                 lat=garaje.lat, lng=garaje.lng, capacidad=5)
+    r = con_deuda(garaje, vehiculo)
+    c = cliente(crear_usuario("pepa@test.com", rol=Rol.PLAYERO, garaje=otro))
+    assert c.get(f"/api/operacion/deudas/{r.id}/").status_code == 404
+
+
+def test_cp32_deuda_incobrable_sigue_suspendiendo_y_se_puede_pagar(cliente, conductor, playero, garaje, vehiculo):
+    r = con_deuda(garaje, vehiculo, horas=24 * 31)
+    reciente = con_deuda(garaje, vehiculo, horas=24 * 29)
+    assert marcar_incobrables() == 1
+    assert Deuda.objects.get(reserva=r).estado == EstadoDeuda.INCOBRABLE
+    assert Deuda.objects.get(reserva=reciente).estado == EstadoDeuda.PENDIENTE
+    assert reservas.tiene_deuda(conductor)
+    assert r.id in [d["reserva_id"] for d in cliente(conductor).get(MIS_DEUDAS).data]
+    assert cliente(playero).post(f"/api/operacion/deudas/{r.id}/efectivo/").status_code == 200
+    assert Deuda.objects.get(reserva=r).estado == EstadoDeuda.PAGADA
+
+
+def condonar(c, r, **datos):
+    return c.post(f"/api/operacion/deudas/{r.id}/condonar/", datos, format="json")
+
+
+def test_condonacion_total_libera_la_cuenta(cliente, admin_garaje, conductor, garaje, vehiculo):
+    r = con_deuda(garaje, vehiculo)
+    res = condonar(cliente(admin_garaje), r, motivo="Demora en la cola de salida")
+    assert res.status_code == 200 and res.data["estado"] == "CONDONADA"
+    r.refresh_from_db()
+    d = Deuda.objects.get(reserva=r)
+    assert r.estado == EstadoReserva.FINALIZADA and not reservas.tiene_deuda(conductor)
+    assert d.monto_condonado == 3000 and d.motivo_condonacion == "Demora en la cola de salida"
+    assert condonar(cliente(admin_garaje), r, motivo="otra vez").status_code == 409
+
+
+def test_condonacion_parcial_baja_el_saldo_y_sigue_suspendida(cliente, admin_garaje, conductor, garaje, vehiculo):
+    r = con_deuda(garaje, vehiculo)
+    c = cliente(admin_garaje)
+    assert condonar(c, r, motivo="Demora", monto="1000").data["total"] == Decimal("2000.00")
+    assert reservas.tiene_deuda(conductor)
+    condonar(c, r, motivo="Segundo reclamo", monto="500")
+    d = Deuda.objects.get(reserva=r)
+    assert (d.monto, d.monto_condonado, d.estado) == (1500, 1500, EstadoDeuda.PENDIENTE)
+    assert d.motivo_condonacion == "Demora\nSegundo reclamo"
+
+
+def test_condonar_valida_motivo_monto_y_permisos(cliente, admin_garaje, otro_admin, playero, garaje, vehiculo):
+    r = con_deuda(garaje, vehiculo)
+    c = cliente(admin_garaje)
+    assert c.post(f"/api/operacion/deudas/{r.id}/condonar/", {}, format="json").status_code == 400
+    assert condonar(c, r, motivo="x", monto="9000").status_code == 400
+    assert condonar(c, r, motivo="x", monto="0").status_code == 400
+    assert condonar(cliente(playero), r, motivo="x").status_code == 403
+    assert condonar(cliente(otro_admin), r, motivo="x").status_code == 404
+    assert Deuda.objects.get(reserva=r).monto_condonado == 0
+
+
+def test_admin_lista_lo_que_le_deben(cliente, admin_garaje, otro_admin, garaje, vehiculo):
+    r = con_deuda(garaje, vehiculo)
+    assert [d["reserva_id"] for d in cliente(admin_garaje).get("/api/operacion/deudas/", {"garaje": garaje.id}).data] == [r.id]
+    assert cliente(otro_admin).get("/api/operacion/deudas/", {"garaje": garaje.id}).status_code == 404
+    assert cliente(admin_garaje).get("/api/operacion/deudas/", {"garaje": "x"}).status_code == 400
+    assert cliente(admin_garaje).get("/api/operacion/deudas/").status_code == 400
+    condonar(cliente(admin_garaje), r, motivo="x")
+    assert cliente(admin_garaje).get("/api/operacion/deudas/", {"garaje": garaje.id}).data == []
+
+
+def test_pago_de_checkout_viejo_tras_condonar_parcial_se_reembolsa(cliente, admin_garaje, garaje, vehiculo, mp):  # noqa: F811
+    conectar(garaje)
+    r = con_deuda(garaje, vehiculo)
+    condonar(cliente(admin_garaje), r, motivo="Demora", monto="1000")
+    d = Deuda.objects.get(reserva=r)
+    _pago_deuda(mp, 81, d, monto=3000)
+    assert procesar_notificacion_pago(81, "555").resultado == ResultadoPago.REEMBOLSADO
+    d.refresh_from_db()
+    assert d.estado == EstadoDeuda.PENDIENTE and mp.reembolsos == ["81"]
+    _pago_deuda(mp, 82, d)  # el saldo nuevo se cobra normalmente
+    assert procesar_notificacion_pago(82, "555").resultado == ResultadoPago.SALDO_DEUDA
+
+
+def test_pago_de_deuda_condonada_del_todo_se_reembolsa(cliente, admin_garaje, garaje, vehiculo, mp):  # noqa: F811
+    conectar(garaje)
+    r = con_deuda(garaje, vehiculo)
+    d = Deuda.objects.get(reserva=r)
+    _pago_deuda(mp, 83, d)
+    condonar(cliente(admin_garaje), r, motivo="Demora")
+    assert procesar_notificacion_pago(83, "555").resultado == ResultadoPago.REEMBOLSADO
+    assert Deuda.objects.get(reserva=r).estado == EstadoDeuda.CONDONADA
+
+
+def test_recordatorios_a_las_0_24_y_48_h(garaje, vehiculo, conductor, mailoutbox):
+    with freeze_time(AHORA) as reloj:
+        con_deuda(garaje, vehiculo)
+        assert recordar_deudas() == 1 and recordar_deudas() == 0  # uno solo por hito
+        assert mailoutbox[0].to == [conductor.email] and "$3000" in mailoutbox[0].body
+        reloj.tick(timedelta(hours=23))
+        assert recordar_deudas() == 0
+        reloj.tick(timedelta(hours=1))
+        assert recordar_deudas() == 1
+        reloj.tick(timedelta(hours=24))
+        assert recordar_deudas() == 1
+        reloj.tick(timedelta(hours=240))
+        assert recordar_deudas() == 0
+    assert len(mailoutbox) == 3
+
+
+def test_recordatorios_atrasados_mandan_uno_solo(garaje, vehiculo, mailoutbox):
+    con_deuda(garaje, vehiculo, horas=50)
+    assert recordar_deudas() == 1 and recordar_deudas() == 0 and len(mailoutbox) == 1
+
+
+def test_recordatorio_fallido_se_reintenta_y_no_frena_a_los_demas(garaje, vehiculo, monkeypatch, mailoutbox, caplog):
+    con_deuda(garaje, vehiculo)
+
+    def falla(**kwargs):
+        raise ConnectionError("SMTP caído")
+
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr("operacion.services.send_mail", falla)
+        assert recordar_deudas() == 0
+    assert "recordatorio" in caplog.text
+    assert recordar_deudas() == 1
+
+
+def test_deuda_saldada_no_recibe_recordatorios(garaje, vehiculo, mailoutbox):
+    Deuda.objects.filter(reserva=con_deuda(garaje, vehiculo)).update(estado=EstadoDeuda.PAGADA)
+    assert recordar_deudas() == 0 and mailoutbox == []
+
+
+def test_metricas_informan_deuda_pendiente_e_incobrable(cliente, admin_garaje, garaje, vehiculo):
+    con_deuda(garaje, vehiculo)
+    con_deuda(garaje, vehiculo, horas=24 * 31)
+    marcar_incobrables()
+    m = cliente(admin_garaje).get(f"/api/garajes/{garaje.id}/metricas/").data
+    assert (m["deuda_pendiente"], m["deuda_incobrable"]) == (3000, 3000)
+
+
+# ---------- RFW-16: un overstay deja sin lugar a una reserva próxima ----------
+
+def alertas(c, garaje):
+    return c.get(f"/api/garajes/{garaje.id}/ocupacion/").data["alertas_overstay"]
+
+
+def test_rfw16_overstay_que_deja_sin_lugar_a_una_reserva(cliente, playero, admin_garaje, garaje, vehiculo):
+    Garaje.objects.filter(pk=garaje.pk).update(capacidad=1, cupo_abonos=0)
+    crear_reserva(garaje, vehiculo, en(-100), en(-5), EstadoReserva.EN_CURSO)
+    llega = crear_reserva(garaje, vehiculo, en(30), en(90))
+    datos = alertas(cliente(playero), garaje)
+    assert [(a["reserva_id"], a["patente"]) for a in datos] == [(llega.id, vehiculo.patente)]
+    assert alertas(cliente(admin_garaje), garaje) == datos
+
+
+def test_rfw16_el_auto_cuenta_aunque_supere_la_proyeccion(cliente, playero, garaje, vehiculo, settings):
+    settings.DRIVLY_OVERSTAY_PROYECCION = timedelta(minutes=10)
+    Garaje.objects.filter(pk=garaje.pk).update(capacidad=1, cupo_abonos=0)
+    crear_reserva(garaje, vehiculo, en(-100), en(-5), EstadoReserva.EN_CURSO)
+    crear_reserva(garaje, vehiculo, en(30), en(90))
+    assert len(alertas(cliente(playero), garaje)) == 1
+
+
+def test_rfw16_sin_alerta_si_hay_lugar_o_no_hay_overstay(cliente, playero, garaje, vehiculo):
+    Garaje.objects.filter(pk=garaje.pk).update(capacidad=2, cupo_abonos=0)
+    crear_reserva(garaje, vehiculo, en(-100), en(-5), EstadoReserva.EN_CURSO)
+    crear_reserva(garaje, vehiculo, en(30), en(90))
+    assert alertas(cliente(playero), garaje) == []
+    Reserva.objects.filter(estado=EstadoReserva.EN_CURSO).update(estado=EstadoReserva.FINALIZADA)
+    Garaje.objects.filter(pk=garaje.pk).update(capacidad=1)
+    assert alertas(cliente(playero), garaje) == []
 
 
 def test_abono_entra_y_sale_varias_veces(cliente, playero, garaje, vehiculo):

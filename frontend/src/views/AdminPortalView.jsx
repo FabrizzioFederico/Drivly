@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { garajesService } from '../api/garajesService';
+import { operacionService } from '../api/operacionService';
 import { pagosService } from '../api/pagosService';
 import { reservasService } from '../api/reservasService';
 import StatusBadge from '../components/StatusBadge';
@@ -11,6 +12,7 @@ const NAV = [
   { id: 'tarifas', label: 'Capacidad y Tarifas' },
   { id: 'equipo', label: 'Equipo (Playeros)' },
   { id: 'cobros', label: 'Cobros (Mercado Pago)' },
+  { id: 'deudas', label: 'Deudas' },
   { id: 'reportes', label: 'Reportes y Caja' },
 ];
 const FILTROS = ['TODOS', 'HOLD', 'CONFIRMADA', 'EN_CURSO', 'CON_DEUDA', 'SIN_LUGAR'];
@@ -35,6 +37,7 @@ function Kpis({ m }) {
         <span className="text-[13px] font-semibold text-ink-muted">Recaudación total</span>
         <span className="text-[34px] font-extrabold tracking-tight">{ars(m.recaudacion_total)}</span>
         <span className="text-[13px] text-ink-muted">App {ars(m.recaudacion_app)} · Presencial {ars(m.recaudacion_presencial)} · Excedentes {ars(m.recaudacion_excedentes)}</span>
+        {(m.deuda_pendiente > 0 || m.deuda_incobrable > 0) && <span className="text-[13px] font-bold text-debt-ink">Por cobrar {ars(m.deuda_pendiente)} · Incobrable {ars(m.deuda_incobrable)}</span>}
       </div>
     </div>
   );
@@ -276,6 +279,13 @@ function MonitorPanel({ garajeId }) {
         <div><h1 className="text-[26px] font-extrabold tracking-tight">Monitor de ocupación</h1><p className="text-[13px] text-ink-muted">{new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
         <span className="inline-flex h-9 items-center gap-2 rounded-full bg-success-soft px-3.5 text-[13px] font-extrabold text-success-ink"><span className="h-2 w-2 animate-pulse rounded-full bg-success" />En vivo</span>
       </div>
+
+      {ocupacion?.alertas_overstay?.length > 0 && (
+        <div role="alert" className="flex flex-col gap-1 rounded-card bg-debt-soft px-4 py-3 text-sm font-semibold text-debt-ink">
+          <span className="font-extrabold">Un vehículo excedido deja sin lugar a {ocupacion.alertas_overstay.length === 1 ? 'una reserva' : `${ocupacion.alertas_overstay.length} reservas`}</span>
+          {ocupacion.alertas_overstay.map((a) => <span key={a.reserva_id}>{formatPatente(a.patente)} · llega a las {hora(a.inicio)}</span>)}
+        </div>
+      )}
 
       <section className="card flex flex-col gap-3.5 px-6 py-[22px]">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -634,6 +644,74 @@ function EquipoPanel({ garajeId }) {
   );
 }
 
+/* ---------- Deudas de overstay: reclamos y condonación (regla 4) ---------- */
+function CondonarForm({ deuda, onHecho, onCancelar }) {
+  const [motivo, setMotivo] = useState('');
+  const [monto, setMonto] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const enviar = async (e) => {
+    e.preventDefault();
+    setBusy(true); setError(null);
+    try {
+      await operacionService.condonar(deuda.reserva_id, { motivo: motivo.trim(), ...(monto ? { monto } : {}) });
+      onHecho();
+    } catch (err) { setError(err.message); setBusy(false); }
+  };
+
+  return (
+    <form onSubmit={enviar} className="flex flex-col gap-2.5 border-t border-ink-line pt-3">
+      <label className="flex flex-col gap-1 text-[13px] font-semibold">Motivo
+        <input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={500} required placeholder="Ej.: demora en la cola de salida"
+          className="min-h-touch rounded-card border-[1.5px] border-ink-line px-3 text-sm font-normal outline-none focus:border-brand" />
+      </label>
+      <label className="flex flex-col gap-1 text-[13px] font-semibold">Monto a condonar (vacío = todo el saldo)
+        <input value={monto} onChange={(e) => setMonto(e.target.value)} type="number" min="0.01" max={deuda.total} step="0.01" placeholder={ars(deuda.total)}
+          className="min-h-touch rounded-card border-[1.5px] border-ink-line px-3 font-mono text-sm font-normal outline-none focus:border-brand" />
+      </label>
+      {error && <p role="alert" className="text-sm font-bold text-debt-ink">{error}</p>}
+      <div className="flex justify-end gap-2.5">
+        <button type="button" onClick={onCancelar} className="btn-outline">Cancelar</button>
+        <button disabled={busy || !motivo.trim()} className="btn-action">{busy ? 'Guardando…' : 'Condonar'}</button>
+      </div>
+    </form>
+  );
+}
+
+function DeudasPanel({ garajeId }) {
+  const [deudas, setDeudas] = useState(null);
+  const [error, setError] = useState(null);
+  const [condonando, setCondonando] = useState(null);
+
+  const load = useMemo(() => () => operacionService.deudas(garajeId)
+    .then((d) => { setDeudas(d); setError(null); })
+    .catch((e) => { setDeudas([]); setError(e.message); }), [garajeId]);
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <>
+      <div><h1 className="text-[26px] font-extrabold tracking-tight">Deudas</h1><p className="text-[13px] text-ink-muted">Overstays sin pagar. Si un conductor lo reclama, podés condonarlos total o parcialmente dejando el motivo.</p></div>
+      {error && <div role="alert" className="rounded-card bg-debt-soft px-4 py-3 text-sm font-semibold text-debt-ink">{error}</div>}
+      {deudas === null && <div className="card h-32 animate-pulse" />}
+      {deudas?.length === 0 && !error && <div className="card p-6 text-sm text-ink-muted">No hay deudas pendientes.</div>}
+      {deudas?.map((d) => (
+        <section key={d.reserva_id} className="card flex flex-col gap-3 p-[18px]">
+          <div className="flex flex-wrap items-center gap-3">
+            <VehiclePlateBadge patente={d.patente} size="sm" />
+            <span className="text-[13px] text-ink-muted">Salió {new Date(d.egreso_real).toLocaleDateString('es-AR')} · +{d.minutos_excedidos} min</span>
+            {d.estado === 'INCOBRABLE' && <span className="rounded-full bg-debt-soft px-2.5 py-0.5 text-xs font-extrabold text-debt-ink">INCOBRABLE</span>}
+            <span className="ml-auto text-xl font-extrabold">{ars(d.total)}</span>
+            {condonando !== d.reserva_id && <button onClick={() => setCondonando(d.reserva_id)} className="btn-outline">Condonar</button>}
+          </div>
+          {Number(d.monto_condonado) > 0 && <p className="whitespace-pre-line text-[13px] text-ink-muted">Ya condonado: {ars(d.monto_condonado)}. {d.motivo_condonacion}</p>}
+          {condonando === d.reserva_id && <CondonarForm deuda={d} onCancelar={() => setCondonando(null)} onHecho={() => { setCondonando(null); load(); }} />}
+        </section>
+      ))}
+    </>
+  );
+}
+
 export default function AdminPortalView({ user }) {
   const [garajeId, setGarajeId] = useState(null);
   const [sinGaraje, setSinGaraje] = useState(false);
@@ -690,6 +768,7 @@ export default function AdminPortalView({ user }) {
             {section === 'garaje' && <GarajePanel garajeId={garajeId} />}
             {section === 'equipo' && <EquipoPanel garajeId={garajeId} />}
             {section === 'cobros' && <CobrosPanel garajeId={garajeId} retorno={retornoMP} />}
+            {section === 'deudas' && <DeudasPanel garajeId={garajeId} />}
           </>
         )}
       </main>

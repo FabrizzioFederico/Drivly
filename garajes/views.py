@@ -18,7 +18,7 @@ from cuentas.permissions import EsAdminGaraje
 from reportes.services import metricas_del_dia
 from reservas.disponibilidad import cercanos_a, garajes_con_disponibilidad
 from reservas.models import MODALIDADES_ABONO, EstadoReserva, Modalidad
-from reservas.ocupacion import ocupantes, pico
+from reservas.ocupacion import ocupantes, pico, sin_lugar_por_overstay
 from reservas.serializers import GarajeDisponibleSerializer
 
 from .geo import caja_alrededor, distancia_m
@@ -284,5 +284,9 @@ def _ocupacion(garaje):
         "libres": max(0, garaje.capacidad - len(ahora_mismo)),
         "libres_presencial": max(0, garaje.capacidad - pico(en_ventana, ahora, hasta)),
         "umbral_alerta": 0.9,
+        "alertas_overstay": [
+            {"reserva_id": r.id, "patente": r.patente, "inicio": r.inicio}
+            for r in sin_lugar_por_overstay(garaje, ahora, hasta)
+        ],
         "franjas": franjas,
     }

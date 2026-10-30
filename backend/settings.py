@@ -144,6 +144,10 @@ DRIVLY_HOLD_TTL = timedelta(minutes=env.int("HOLD_TTL_MIN", default=5))
 DRIVLY_RADIO_CERCANOS_M = env.int("RADIO_CERCANOS_M", default=1000)
 # Un vehículo EN_CURSO pasado su fin (overstay activo) se proyecta ocupando hasta ahora + este margen
 DRIVLY_OVERSTAY_PROYECCION = timedelta(minutes=env.int("OVERSTAY_PROYECCION_MIN", default=60))
+# Overstay impago (regla 4): desde cuándo la deuda sigue a la patente, cuándo es incobrable y cuándo se recuerda
+DRIVLY_DEUDA_BLOQUEO = timedelta(hours=env.int("DEUDA_BLOQUEO_HORAS", default=72))
+DRIVLY_DEUDA_INCOBRABLE = timedelta(days=env.int("DEUDA_INCOBRABLE_DIAS", default=30))
+DRIVLY_DEUDA_RECORDATORIOS = (timedelta(hours=0), timedelta(hours=24), timedelta(hours=48))
 # Una reserva pagada se puede cancelar con reembolso total hasta este tiempo antes del inicio
 DRIVLY_CANCELACION_ANTICIPACION = timedelta(minutes=env.int("CANCELACION_ANTICIPACION_MIN", default=120))
 # ...o dentro de estos minutos desde el pago, para quien reserva con menos anticipación (nunca después del inicio)
@@ -184,6 +188,14 @@ CELERY_BEAT_SCHEDULE = {
     "reintentar-reembolsos": {
         "task": "pagos.tasks.reintentar_reembolsos",
         "schedule": 60.0 * 15,
+    },
+    "recordar-deudas": {
+        "task": "operacion.tasks.recordar_deudas",
+        "schedule": 60.0 * 15,
+    },
+    "marcar-deudas-incobrables": {
+        "task": "operacion.tasks.marcar_deudas_incobrables",
+        "schedule": 60.0 * 60 * 24,
     },
 }
 

@@ -42,6 +42,12 @@ class DeudaPendiente(ReservaError):
     default_code = "DEUDA_PENDIENTE"
 
 
+class DeudaPatente(ReservaError):
+    status_code = status.HTTP_402_PAYMENT_REQUIRED
+    default_detail = "Este vehículo tiene una deuda impaga: hay que cobrarla antes del ingreso."
+    default_code = "DEUDA_PATENTE"
+
+
 class EstadoInvalido(ReservaError):
     default_code = "ESTADO_INVALIDO"
 

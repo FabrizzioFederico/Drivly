@@ -22,6 +22,7 @@ class Ocupante:
     fin: datetime  # fin efectivo (proyectado si hay overstay activo)
     modalidad: str
     estado: str
+    overstay: bool = False
 
 
 def ocupantes(garaje_id, ini, fin, ahora=None, excluir_id=None) -> list[Ocupante]:
@@ -47,10 +48,11 @@ def ocupantes(garaje_id, ini, fin, ahora=None, excluir_id=None) -> list[Ocupante
     resultado = []
     for r in qs:
         fin_efectivo = r.fin
-        if r.estado == EstadoReserva.EN_CURSO and fin_efectivo < ahora:
+        overstay = r.estado == EstadoReserva.EN_CURSO and fin_efectivo < ahora
+        if overstay:
             fin_efectivo = max(fin_efectivo, proyeccion)
         if r.inicio < fin and fin_efectivo > ini:
-            resultado.append(Ocupante(r.inicio, fin_efectivo, r.modalidad, r.estado))
+            resultado.append(Ocupante(r.inicio, fin_efectivo, r.modalidad, r.estado, overstay))
     return resultado
 
 
@@ -61,6 +63,31 @@ def pico(lista: list[Ocupante], ini, fin) -> int:
 
 def ocupacion_pico(garaje_id, ini, fin, ahora=None, excluir_id=None) -> int:
     return pico(ocupantes(garaje_id, ini, fin, ahora, excluir_id), ini, fin)
+
+
+def sin_lugar_por_overstay(garaje, ahora, hasta) -> list[Reserva]:
+    """
+    Reservas confirmadas que llegan antes de `hasta` y no van a tener lugar por un overstay activo (RFW-16).
+    Para avisar con tiempo, el auto excedido se cuenta hasta que salga, aunque supere la proyección.
+    Un abono ya vigente no es una llegada: siempre figura confirmado, esté adentro o afuera.
+    """
+    lista = ocupantes(garaje.id, ahora, hasta, ahora)
+    excedidos = sum(o.overstay for o in lista)
+    if not excedidos:
+        return []
+    resto = [o for o in lista if not o.overstay]
+    llegadas = (
+        Reserva.objects.filter(
+            garaje=garaje, estado=EstadoReserva.CONFIRMADA, periodo__startswith__lte=hasta, periodo__endswith__gt=ahora
+        )
+        .exclude(modalidad__in=MODALIDADES_ABONO, periodo__startswith__lte=ahora)
+        .select_related("vehiculo")
+        .order_by("periodo")
+    )
+    return [
+        r for r in llegadas
+        if excedidos + sum(o.inicio <= max(r.inicio, ahora) < o.fin for o in resto) > garaje.capacidad
+    ]
 
 
 def lugares_libres(garaje, ini, fin, modalidad=Modalidad.HORA, ahora=None, excluir_id=None) -> int:

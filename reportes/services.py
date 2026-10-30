@@ -55,6 +55,7 @@ def metricas_del_dia(garaje, fecha=None):
         Deuda.objects.filter(reserva__garaje=garaje, estado=EstadoDeuda.PAGADA, pagada_en__gte=ini, pagada_en__lt=fin),
         "monto",
     )
+    deudas = Deuda.objects.filter(reserva__garaje=garaje)
     return {
         "ocupacion_pico": lugares / garaje.capacidad,
         "ocupacion_pico_lugares": lugares,
@@ -67,4 +68,6 @@ def metricas_del_dia(garaje, fecha=None):
         "recaudacion_app": app,
         "recaudacion_presencial": presencial,
         "recaudacion_excedentes": excedentes,
+        "deuda_pendiente": _suma(deudas.filter(estado=EstadoDeuda.PENDIENTE), "monto"),
+        "deuda_incobrable": _suma(deudas.filter(estado=EstadoDeuda.INCOBRABLE), "monto"),
     }

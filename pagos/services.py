@@ -217,6 +217,11 @@ def procesar_notificacion_pago(payment_id, mp_user_id):
             return pago
 
         esperado = deuda.monto if deuda else reserva.monto
+        if deuda and deuda.monto_condonado and pago.monto > esperado:  # checkout abierto antes de la condonación
+            logger.warning("Pago %s de una deuda condonada (reserva %s): se reembolsa.", pago.payment_id, reserva.id)
+            _reembolsar(pago, sdk)
+            return pago
+
         if pago.monto != esperado or payment.get("currency_id") != "ARS":
             logger.error("Pago %s: pagó %s %s y la reserva %s debía %s ARS. No se confirma.",
                          pago.payment_id, pago.monto, payment.get("currency_id"), reserva.id, esperado)
@@ -228,7 +233,7 @@ def procesar_notificacion_pago(payment_id, mp_user_id):
             if saldar_deuda(reserva.id, MedioCobro.MERCADO_PAGO, pago.payment_id):
                 pago.resultado = ResultadoPago.SALDO_DEUDA
                 pago.save(update_fields=["resultado", "actualizado_en"])
-            else:  # ya la había cobrado el playero en efectivo
+            else:  # ya la había cobrado el playero en efectivo, o el garaje la condonó
                 logger.warning("Pago %s de una deuda ya saldada (reserva %s): se reembolsa.", pago.payment_id, reserva.id)
                 _reembolsar(pago, sdk)
             return pago

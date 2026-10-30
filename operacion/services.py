@@ -7,6 +7,8 @@ import math
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.conf import settings
+from django.core.mail import send_mail
 from django.db import transaction
 from django.db.backends.postgresql.psycopg_any import DateTimeTZRange
 from django.db.models import Q
@@ -15,14 +17,16 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from garajes.models import Garaje
 from reservas.disponibilidad import cercanos_a
-from reservas.exceptions import DeudaPendiente, EstadoInvalido, SinLugarPresencial
+from reservas.exceptions import DeudaPatente, DeudaPendiente, EstadoInvalido, SinLugarPresencial
 from reservas.models import EstadoReserva, Modalidad, Reserva
 from reservas.ocupacion import lugares_libres
 from reservas.serializers import GarajeDisponibleSerializer
 from reservas.services import reserva_desde_qr, tiene_deuda
 from vehiculos.models import Categoria, es_patente_de_moto
 
-from .models import Deuda, EstadoDeuda, Incidente, MedioCobro, Movimiento, TipoIncidente, TipoMovimiento
+from .models import (
+    ESTADOS_IMPAGOS, Deuda, EstadoDeuda, Incidente, MedioCobro, Movimiento, TipoIncidente, TipoMovimiento,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,18 @@ def _ids_con_patente(patente):
     return Reserva.objects.filter(Q(patente_presencial=patente) | Q(vehiculo__patente=patente)).values("id")
 
 
+def _exigir_patente_sin_deuda(patente):
+    """Pasado el bloqueo la deuda sigue al vehículo (CP-30): no alcanza con entrar con otra cuenta o sin reserva."""
+    deuda = (
+        Deuda.objects.select_related("reserva__garaje")
+        .filter(patente=patente, estado__in=ESTADOS_IMPAGOS, vence_bloqueo__lte=timezone.now())
+        .order_by("egreso_real")
+        .first()
+    )
+    if deuda:
+        raise DeudaPatente(deuda=deuda)
+
+
 # ---------- Ingreso ----------
 
 @transaction.atomic
@@ -64,6 +80,7 @@ def ingreso_con_qr(garaje, token, usuario):
     reserva = _reserva_por_qr(garaje, token)
     if reserva.estado != EstadoReserva.CONFIRMADA:
         raise EstadoInvalido(f"La reserva está {reserva.get_estado_display().lower()} y no habilita el ingreso.")
+    _exigir_patente_sin_deuda(reserva.patente)
     if reserva.conductor_id and tiene_deuda(reserva.conductor):  # abono suspendido por deuda (CP-31)
         raise DeudaPendiente("El conductor tiene una deuda pendiente: debe saldarla antes de ingresar.")
     ahora = timezone.now()
@@ -90,6 +107,7 @@ def ingreso_presencial(garaje, patente, salida_estimada, usuario):
         raise ValidationError({"salida_estimada": "Debe ser posterior a este momento."})
     if Reserva.objects.filter(garaje=garaje, estado=EstadoReserva.EN_CURSO, id__in=_ids_con_patente(patente)).exists():
         raise EstadoInvalido("Ese vehículo ya está adentro del garaje.")
+    _exigir_patente_sin_deuda(patente)
     if lugares_libres(garaje, ahora, salida_estimada, Modalidad.PRESENCIAL, ahora) <= 0:
         raise SinLugarPresencial(cercanos=cercanos_serializados(garaje, ahora, salida_estimada))
     reserva = Reserva.objects.create(
@@ -127,6 +145,7 @@ def calcular_deuda(reserva, egreso):
         reserva=reserva, patente=reserva.patente, egreso_real=egreso, minutos_excedidos=math.ceil(excedido / 60),
         tolerancia_min=garaje.tolerancia_min, fraccion_min=tarifa.fraccion_min, fracciones=fracciones,
         precio_fraccion=tarifa.precio_fraccion, recargo=garaje.recargo_overstay, monto=monto,
+        vence_bloqueo=egreso + settings.DRIVLY_DEUDA_BLOQUEO,
     )
 
 
@@ -165,9 +184,9 @@ def egreso(garaje, usuario, token=None, patente=None):
 
 @transaction.atomic
 def saldar_deuda(reserva_id, medio, transaccion_id=""):
-    """Devuelve True si esta llamada la saldó, False si ya estaba paga. Libera la cuenta del conductor."""
+    """Devuelve True si esta llamada la saldó, False si ya no se debía. Libera la cuenta del conductor."""
     deuda = Deuda.objects.select_for_update().get(reserva_id=reserva_id)
-    if deuda.estado == EstadoDeuda.PAGADA:
+    if deuda.estado not in ESTADOS_IMPAGOS:
         return False
     deuda.estado = EstadoDeuda.PAGADA
     deuda.medio = medio
@@ -180,6 +199,87 @@ def saldar_deuda(reserva_id, medio, transaccion_id=""):
 
 def registrar_efectivo(deuda):
     return saldar_deuda(deuda.reserva_id, MedioCobro.EFECTIVO)
+
+
+@transaction.atomic
+def condonar_deuda(reserva_id, motivo, monto=None):
+    """
+    Reclamo del conductor (regla 4). Sin `monto`, o con todo el saldo, es total y libera la cuenta;
+    con menos, baja el saldo y la cuenta sigue suspendida hasta pagar el resto.
+    """
+    deuda = Deuda.objects.select_for_update().get(reserva_id=reserva_id)
+    if deuda.estado not in ESTADOS_IMPAGOS:
+        raise EstadoInvalido("Esa deuda ya no está pendiente.")
+    if monto is not None and monto > deuda.monto:
+        raise ValidationError({"monto": "No puede superar el saldo de la deuda."})
+    parcial = monto is not None and monto < deuda.monto
+    deuda.monto_condonado += monto if parcial else deuda.monto
+    deuda.motivo_condonacion = "\n".join(filter(None, [deuda.motivo_condonacion, motivo]))
+    if parcial:
+        deuda.monto -= monto
+    else:
+        deuda.estado = EstadoDeuda.CONDONADA
+        Reserva.objects.filter(pk=reserva_id, estado=EstadoReserva.CON_DEUDA).update(estado=EstadoReserva.FINALIZADA)
+    deuda.save(update_fields=["monto", "monto_condonado", "motivo_condonacion", "estado"])
+    return deuda
+
+
+# ---------- Tareas programadas de la deuda impaga ----------
+
+def _enviar_recordatorio(deuda):
+    conductor = deuda.reserva.conductor
+    garaje = deuda.reserva.garaje
+    send_mail(
+        subject=f"Drivly: tenés una deuda pendiente en {garaje.nombre}",
+        message=(
+            f"Hola{(' ' + conductor.nombre) if conductor.nombre else ''}:\n\n"
+            f"Tu vehículo {deuda.patente} salió de {garaje.nombre} {deuda.minutos_excedidos} minutos después "
+            f"del horario reservado y quedó una deuda de ${deuda.monto}.\n\n"
+            "Mientras no la saldes no podés hacer reservas nuevas y tus abonos quedan suspendidos. "
+            "Podés pagarla desde Mis reservas, en la app.\n\n"
+            "Si ya la pagaste, ignorá este mensaje."
+        ),
+        from_email=None,
+        recipient_list=[conductor.email],
+    )
+
+
+def recordar_deudas() -> int:
+    """
+    Recordatorios a las 0, 24 y 48 h. Si la tarea estuvo parada y venció más de uno se manda uno solo.
+    Un mail que falla no cuenta como enviado: se reintenta en la próxima corrida.
+    """
+    hitos = settings.DRIVLY_DEUDA_RECORDATORIOS
+    ahora = timezone.now()
+    enviados = 0
+    pendientes = Deuda.objects.filter(estado=EstadoDeuda.PENDIENTE, recordatorios_enviados__lt=len(hitos))
+    for deuda_id in pendientes.values_list("pk", flat=True):
+        with transaction.atomic():
+            deuda = (
+                Deuda.objects.select_for_update(of=("self",))
+                .select_related("reserva__garaje", "reserva__conductor")
+                .get(pk=deuda_id)
+            )
+            vencidos = sum(deuda.egreso_real + hito <= ahora for hito in hitos)
+            if deuda.estado != EstadoDeuda.PENDIENTE or vencidos <= deuda.recordatorios_enviados:
+                continue
+            try:
+                _enviar_recordatorio(deuda)
+            except Exception:
+                logger.exception("No se pudo enviar el recordatorio de la deuda de la reserva %s", deuda.reserva_id)
+                continue
+            deuda.recordatorios_enviados = vencidos
+            deuda.save(update_fields=["recordatorios_enviados"])
+            enviados += 1
+    return enviados
+
+
+def marcar_incobrables() -> int:
+    """CP-32: sólo cambia para los reportes. La reserva sigue CON_DEUDA y la cuenta, suspendida."""
+    limite = timezone.now() - settings.DRIVLY_DEUDA_INCOBRABLE
+    return Deuda.objects.filter(estado=EstadoDeuda.PENDIENTE, egreso_real__lte=limite).update(
+        estado=EstadoDeuda.INCOBRABLE
+    )
 
 
 # ---------- Sin lugar físico ----------

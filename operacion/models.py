@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class TipoMovimiento(models.TextChoices):
@@ -25,6 +26,12 @@ class Movimiento(models.Model):
 class EstadoDeuda(models.TextChoices):
     PENDIENTE = "PENDIENTE", "Pendiente"
     PAGADA = "PAGADA", "Pagada"
+    CONDONADA = "CONDONADA", "Condonada"
+    INCOBRABLE = "INCOBRABLE", "Incobrable"
+
+
+# Una deuda incobrable se puede seguir pagando y mantiene suspendida la cuenta: sólo cambia cómo se reporta.
+ESTADOS_IMPAGOS = (EstadoDeuda.PENDIENTE, EstadoDeuda.INCOBRABLE)
 
 
 class MedioCobro(models.TextChoices):
@@ -44,8 +51,12 @@ class Deuda(models.Model):
     fracciones = models.PositiveIntegerField()
     precio_fraccion = models.DecimalField(max_digits=12, decimal_places=2)
     recargo = models.DecimalField(max_digits=4, decimal_places=2)
-    monto = models.DecimalField(max_digits=12, decimal_places=2)
-    estado = models.CharField(max_length=9, choices=EstadoDeuda.choices, default=EstadoDeuda.PENDIENTE)
+    monto = models.DecimalField(max_digits=12, decimal_places=2)  # saldo: una condonación parcial lo reduce
+    monto_condonado = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    motivo_condonacion = models.TextField(blank=True, default="")
+    estado = models.CharField(max_length=10, choices=EstadoDeuda.choices, default=EstadoDeuda.PENDIENTE)
+    vence_bloqueo = models.DateTimeField()  # desde acá la deuda sigue también a la patente
+    recordatorios_enviados = models.PositiveSmallIntegerField(default=0)
     medio = models.CharField(max_length=12, choices=MedioCobro.choices, blank=True, default="")
     transaccion_id = models.CharField(max_length=32, blank=True, default="")  # payment_id de Mercado Pago
     pagada_en = models.DateTimeField(null=True, blank=True)
@@ -56,6 +67,10 @@ class Deuda(models.Model):
 
     def __str__(self):
         return f"{self.patente} · ${self.monto} · {self.get_estado_display()}"
+
+    @property
+    def sigue_a_la_patente(self):
+        return self.vence_bloqueo <= timezone.now()
 
 
 class TipoIncidente(models.TextChoices):

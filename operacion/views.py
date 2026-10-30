@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 
 from django.conf import settings
 from django.utils import timezone
@@ -9,15 +10,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from cuentas.models import Rol
+from cuentas.permissions import EsAdminGaraje
 from garajes.models import Garaje
 from garajes.views import _ocupacion
 from pagos.services import CANAL_WEB, CANALES, crear_cobro_deuda, reembolsar_cancelacion
-from reservas.exceptions import GarajeSinMercadoPago
+from reservas.exceptions import DeudaPatente, GarajeSinMercadoPago
 from reservas.serializers import ReservaSerializer
 from vehiculos.models import normalizar_patente, validar_patente
 
 from . import services
-from .models import Deuda, EstadoDeuda, MedioCobro
+from .models import ESTADOS_IMPAGOS, Deuda, EstadoDeuda, MedioCobro
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,8 @@ def _deuda_json(deuda, mp_qr_data=""):
         "tolerancia_min": deuda.tolerancia_min, "fraccion_min": deuda.fraccion_min, "fracciones": deuda.fracciones,
         "precio_fraccion": deuda.precio_fraccion, "recargo": deuda.recargo, "total": deuda.monto,
         "mp_qr_data": mp_qr_data, "fin_reservado": deuda.reserva.fin, "egreso_real": deuda.egreso_real,
+        "garaje_nombre": deuda.reserva.garaje.nombre, "estado": deuda.estado,
+        "monto_condonado": deuda.monto_condonado, "motivo_condonacion": deuda.motivo_condonacion,
     }
 
 
@@ -90,12 +94,20 @@ class IngresoView(_OperacionView):
 
     def post(self, request):
         garaje, d = _escaneo(request)
-        if d.get("qr_token"):
-            reserva = services.ingreso_con_qr(garaje, d["qr_token"], request.user)
-        else:
-            if "salida_estimada" not in d:
-                raise serializers.ValidationError({"salida_estimada": "Obligatoria para clientes sin reserva."})
-            reserva = services.ingreso_presencial(garaje, d["patente"], d["salida_estimada"], request.user)
+        if not d.get("qr_token") and "salida_estimada" not in d:
+            raise serializers.ValidationError({"salida_estimada": "Obligatoria para clientes sin reserva."})
+        try:
+            if d.get("qr_token"):
+                reserva = services.ingreso_con_qr(garaje, d["qr_token"], request.user)
+            else:
+                reserva = services.ingreso_presencial(garaje, d["patente"], d["salida_estimada"], request.user)
+        except DeudaPatente as e:
+            deuda = e.extra["deuda"]
+            # La deuda es del garaje que la generó: otro garaje sólo la cobra por QR, que se acredita a ese garaje.
+            e.extra["deuda"] = {
+                **_deuda_json(deuda, _qr_de_cobro(deuda)), "efectivo": deuda.reserva.garaje_id == garaje.id,
+            }
+            raise
         return Response({"reserva": ReservaSerializer(reserva).data, "ocupacion": _ocupacion(garaje)})
 
 
@@ -132,10 +144,15 @@ class SinLugarView(_OperacionView):
         })
 
 
-def _deuda_de(usuario, reserva_id):
+def _deuda(reserva_id):
     deuda = Deuda.objects.select_related("reserva__garaje").filter(reserva_id=reserva_id).first()
     if deuda is None:
         raise NotFound("Esa reserva no tiene deuda.")
+    return deuda
+
+
+def _deuda_de(usuario, reserva_id):
+    deuda = _deuda(reserva_id)
     _garaje_de(usuario, deuda.reserva.garaje_id)
     return deuda
 
@@ -144,7 +161,9 @@ class EstadoDeudaView(_OperacionView):
     """GET /api/operacion/deudas/{reserva_id}/ -> {pagado, transaccion_id} (polling del QR)"""
 
     def get(self, request, reserva_id):
-        deuda = _deuda_de(request.user, reserva_id)
+        deuda = _deuda(reserva_id)
+        if not deuda.sigue_a_la_patente:  # pasado el bloqueo la puede estar cobrando cualquier garaje (CP-30)
+            _garaje_de(request.user, deuda.reserva.garaje_id)
         return Response({"pagado": deuda.estado == EstadoDeuda.PAGADA, "transaccion_id": deuda.transaccion_id or None})
 
 
@@ -156,11 +175,42 @@ class EfectivoDeudaView(_OperacionView):
         return Response({"pagado": True})
 
 
+class DeudasDelGarajeView(APIView):
+    """GET /api/operacion/deudas/?garaje= — lo que le deben al garaje, para reclamar o condonar."""
+
+    permission_classes = [IsAuthenticated, EsAdminGaraje]
+
+    def get(self, request):
+        garaje = _garaje_de(request.user, serializers.UUIDField().run_validation(request.query_params.get("garaje")))
+        deudas = Deuda.objects.select_related("reserva__garaje").filter(
+            reserva__garaje=garaje, estado__in=ESTADOS_IMPAGOS
+        )
+        return Response([_deuda_json(d) for d in deudas])
+
+
+class _CondonacionSerializer(serializers.Serializer):
+    motivo = serializers.CharField(max_length=500)
+    monto = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"), required=False)
+
+
+class CondonarDeudaView(APIView):
+    """POST /api/operacion/deudas/{reserva_id}/condonar/ {motivo, monto?}: sin monto condona todo el saldo."""
+
+    permission_classes = [IsAuthenticated, EsAdminGaraje]
+
+    def post(self, request, reserva_id):
+        datos = _CondonacionSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        deuda = _deuda_de(request.user, reserva_id)
+        services.condonar_deuda(deuda.reserva_id, **datos.validated_data)
+        return Response(_deuda_json(_deuda(reserva_id)))
+
+
 # ---------- Del lado del conductor (CU-09) ----------
 
 def _pendientes_de(conductor):
     return Deuda.objects.select_related("reserva__garaje").filter(
-        reserva__conductor=conductor, estado=EstadoDeuda.PENDIENTE
+        reserva__conductor=conductor, estado__in=ESTADOS_IMPAGOS
     )
 
 
@@ -170,9 +220,7 @@ class MisDeudasView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response([
-            {**_deuda_json(d), "garaje_nombre": d.reserva.garaje.nombre} for d in _pendientes_de(request.user)
-        ])
+        return Response([_deuda_json(d) for d in _pendientes_de(request.user)])
 
 
 class PagarDeudaView(APIView):

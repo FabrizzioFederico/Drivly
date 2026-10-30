@@ -72,6 +72,7 @@ function OverstayModal({ deuda, onClose, onSalidaConDeuda }) {
   const [pagado, setPagado] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const conEfectivo = deuda.efectivo !== false; // en otro garaje no: la deuda es del que la generó
 
   // Polling del estado de pago de Mercado Pago (cada 3 s)
   useEffect(() => {
@@ -96,6 +97,7 @@ function OverstayModal({ deuda, onClose, onSalidaConDeuda }) {
           <VehiclePlateBadge patente={deuda.patente} dark />
         </div>
         <div>
+          {deuda.antesDeIngreso && <p role="alert" className="mb-2 rounded-card bg-debt/15 px-3 py-2.5 text-sm font-bold text-debt-light">Deuda impaga en {deuda.garaje_nombre}: hay que cobrarla antes del ingreso.</p>}
           <p id="overstay-title" className="text-sm font-semibold text-ink-subtle">Estadía excedida</p>
           <p className="flex items-baseline gap-2"><span className="text-5xl font-extrabold tracking-tight text-debt-light">+{deuda.minutos_excedidos} min</span><span className="text-[13px] font-semibold text-ink-subtle">sobre tolerancia</span></p>
         </div>
@@ -107,6 +109,7 @@ function OverstayModal({ deuda, onClose, onSalidaConDeuda }) {
         <div className="rounded-card border border-ink-700 bg-ink p-3 font-mono text-[13px] leading-relaxed text-ink-subtle">
           <div>⌈{deuda.minutos_excedidos} min ÷ {deuda.fraccion_min ?? 15}⌉ = {deuda.fracciones} fracciones</div>
           <div>{deuda.fracciones} × {ars(deuda.precio_fraccion)} + {Math.round(deuda.recargo * 100)} % de recargo</div>
+          {Number(deuda.monto_condonado) > 0 && <div>Condonado por el garaje: −{ars(deuda.monto_condonado)}</div>}
           <div className="mt-1.5 flex justify-between border-t border-ink-700 pt-1.5 font-bold text-white"><span>Total a cobrar</span><span className="text-xl">{ars(deuda.total)}</span></div>
         </div>
 
@@ -122,15 +125,18 @@ function OverstayModal({ deuda, onClose, onSalidaConDeuda }) {
                 </div>
               </div>
             ) : (
-              <p className="rounded-card bg-ink px-3 py-2.5 text-sm font-semibold text-ink-subtle">El cobro por Mercado Pago no está disponible. Podés cobrar en efectivo.</p>
+              <p className="rounded-card bg-ink px-3 py-2.5 text-sm font-semibold text-ink-subtle">
+                {conEfectivo ? 'El cobro por Mercado Pago no está disponible. Podés cobrar en efectivo.' : `El cobro por Mercado Pago no está disponible. El conductor puede pagarla desde su app o en ${deuda.garaje_nombre}.`}
+              </p>
             )}
             {error && <p role="alert" className="text-sm font-bold text-debt-light">{error}</p>}
-            <div className={`grid gap-2.5 ${deuda.mp_qr_data ? 'grid-cols-2' : ''}`}>
-              <button onClick={efectivo} disabled={busy} className="btn-ghost-dark min-h-[64px]">Cobro en efectivo</button>
+            {!conEfectivo && <p className="text-xs text-ink-subtle">La deuda es de {deuda.garaje_nombre}: desde este garaje sólo se cobra por QR, que se le acredita a ese garaje.</p>}
+            <div className={`grid gap-2.5 ${deuda.mp_qr_data && conEfectivo ? 'grid-cols-2' : ''}`}>
+              {conEfectivo && <button onClick={efectivo} disabled={busy} className="btn-ghost-dark min-h-[64px]">Cobro en efectivo</button>}
               {deuda.mp_qr_data && <button onClick={async () => { const r = await operacionService.estadoDeuda(deuda.reserva_id); if (r.pagado) setPagado({ medio: 'Mercado Pago', tx: r.transaccion_id }); }} className="btn-primary min-h-[64px]">Verificar pago</button>}
             </div>
             {/* Regla 4: Drivly no indica retener el vehículo. La deuda queda en la cuenta y bloquea nuevas reservas. */}
-            <button onClick={onSalidaConDeuda} className="min-h-touch text-sm font-bold text-ink-subtle hover:text-white">Salida con deuda</button>
+            <button onClick={onSalidaConDeuda} className="min-h-touch text-sm font-bold text-ink-subtle hover:text-white">{deuda.antesDeIngreso ? 'No ingresa' : 'Salida con deuda'}</button>
           </>
         ) : (
           <>
@@ -139,10 +145,21 @@ function OverstayModal({ deuda, onClose, onSalidaConDeuda }) {
               <span className="text-xl font-extrabold">{ars(deuda.total)} · {pagado.medio}</span>
               {pagado.tx && <span className="font-mono text-xs text-ink-subtle">TX {pagado.tx}</span>}
             </div>
-            <button onClick={onClose} className="btn-action min-h-[72px] text-lg">Liberar salida</button>
+            <button onClick={onClose} className="btn-action min-h-[72px] text-lg">{deuda.antesDeIngreso ? 'Continuar' : 'Liberar salida'}</button>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ---------- RFW-16: un overstay deja sin lugar a una reserva próxima ---------- */
+function AlertasOverstay({ alertas }) {
+  if (!alertas?.length) return null;
+  return (
+    <div role="alert" className="flex flex-col gap-1 rounded-card bg-debt/15 px-4 py-3 text-sm font-bold text-debt-light">
+      <span>Un vehículo excedido deja sin lugar a {alertas.length === 1 ? 'una reserva' : `${alertas.length} reservas`}:</span>
+      {alertas.map((a) => <span key={a.reserva_id} className="font-mono">{a.patente} · llega {hora(a.inicio)}</span>)}
     </div>
   );
 }
@@ -211,7 +228,8 @@ export default function ValetPortalView({ user }) {
       }
       setMode(null); setManual(''); setSalidaMin(null);
     } catch (e) {
-      if (e.code === 'SIN_LUGAR_PRESENCIAL') { mostrarCercanos('Sin lugar para clientes sin reserva', e.message, e.data?.cercanos); loadOcupacion(); }
+      if (e.code === 'DEUDA_PATENTE') setDeuda({ ...e.data.deuda, antesDeIngreso: true });
+      else if (e.code === 'SIN_LUGAR_PRESENCIAL') { mostrarCercanos('Sin lugar para clientes sin reserva', e.message, e.data?.cercanos); loadOcupacion(); }
       else setFeedback({ ok: false, text: e.message });
     } finally { setBusy(false); }
   }, [mode, busy, garajeId, loadOcupacion, sinLugarPresencial, mostrarCercanos, ventana]);
@@ -284,6 +302,8 @@ export default function ValetPortalView({ user }) {
             </div>
           )}
 
+          <AlertasOverstay alertas={ocupacion?.alertas_overstay} />
+
           {derivar && (
             <div className="flex flex-col gap-2">
               {derivar.detalle && <p role="alert" className="rounded-card bg-debt/15 px-4 py-3 text-sm font-bold text-debt-light">{derivar.detalle}</p>}
@@ -311,8 +331,8 @@ export default function ValetPortalView({ user }) {
       </div>
 
       {deuda && <OverstayModal deuda={deuda}
-        onClose={() => { setDeuda(null); setFeedback({ ok: true, text: 'Deuda saldada. Salida liberada.' }); loadOcupacion(); }}
-        onSalidaConDeuda={() => { setDeuda(null); setFeedback({ ok: false, text: `Salió con deuda de ${ars(deuda.total)}. La cuenta queda bloqueada hasta saldarla.` }); loadOcupacion(); }} />}
+        onClose={() => { setDeuda(null); setFeedback({ ok: true, text: deuda.antesDeIngreso ? 'Deuda saldada. Volvé a escanear para registrar el ingreso.' : 'Deuda saldada. Salida liberada.' }); loadOcupacion(); }}
+        onSalidaConDeuda={() => { setDeuda(null); setFeedback({ ok: false, text: deuda.antesDeIngreso ? 'No se registró el ingreso: la deuda sigue pendiente.' : `Salió con deuda de ${ars(deuda.total)}. La cuenta queda bloqueada hasta saldarla.` }); loadOcupacion(); }} />}
     </div>
   );
 }

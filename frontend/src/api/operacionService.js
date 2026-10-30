@@ -8,6 +8,7 @@ export const operacionService = {
    *     | { garaje, patente, salida_estimada }              cliente presencial (regla 6)
    * -> { reserva, ocupacion }
    * 409 { code: 'SIN_LUGAR_PRESENCIAL', cercanos: [...] } si el presencial chocaría con reservas de la app.
+   * 402 { code: 'DEUDA_PATENTE', deuda: {..., efectivo} } si la patente tiene una deuda de más de 72 h (CP-30).
    */
   async ingreso(payload) {
     if (USE_MOCKS) return mocks.ingreso(payload);
@@ -45,5 +46,17 @@ export const operacionService = {
   async registrarEfectivo(reservaId) {
     if (USE_MOCKS) return mocks.registrarEfectivo(reservaId);
     return (await client.post(`/operacion/deudas/${reservaId}/efectivo/`)).data;
+  },
+
+  /** GET /operacion/deudas/?garaje= -> deudas impagas del garaje (sólo admin) */
+  async deudas(garajeId) {
+    if (USE_MOCKS) return mocks.deudas(garajeId);
+    return (await client.get('/operacion/deudas/', { params: { garaje: garajeId } })).data;
+  },
+
+  /** POST /operacion/deudas/{reservaId}/condonar/ { motivo, monto? }: sin monto condona todo el saldo (regla 4). */
+  async condonar(reservaId, payload) {
+    if (USE_MOCKS) return mocks.condonar(reservaId, payload);
+    return (await client.post(`/operacion/deudas/${reservaId}/condonar/`, payload)).data;
   },
 };

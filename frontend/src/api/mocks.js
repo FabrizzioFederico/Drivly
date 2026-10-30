@@ -297,6 +297,16 @@ export const mocks = {
     return { pagado, transaccion_id: pagado ? 'MP-' + Math.floor(Math.random() * 1e8) : null };
   },
 
+  async deudas() {
+    await wait();
+    return [];
+  },
+
+  async condonar(id) {
+    await wait();
+    return { reserva_id: id, estado: 'CONDONADA' };
+  },
+
   async registrarEfectivo(id) {
     await wait();
     const r = reservas.find((x) => x.id === id);
