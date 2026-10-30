@@ -38,6 +38,7 @@ import com.drivly.app.ui.components.ItemBarra
 import com.drivly.app.ui.components.LocalEspacioBarra
 import com.drivly.app.ui.components.ScrollDeBarra
 import com.drivly.app.ui.login.LoginScreen
+import com.drivly.app.ui.pago.PagoDeudaResultadoScreen
 import com.drivly.app.ui.pago.PagoResultadoScreen
 import com.drivly.app.ui.perfil.PerfilScreen
 import com.drivly.app.ui.reservar.ReservarScreen
@@ -52,6 +53,7 @@ private object Rutas {
     const val PERFIL = "perfil"
     const val RESERVAR = "reservar/{garajeId}?nombre={nombre}&direccion={direccion}&inicio={inicio}&fin={fin}&vehiculo={vehiculo}"
     const val PAGO = "pago/{reservaId}?estado={estado}"
+    const val PAGO_DEUDA = "pago-deuda/{reservaId}?estado={estado}"
     const val TICKET = "ticket/{reservaId}"
 
     fun reservar(garajeId: String, nombre: String, direccion: String, inicio: OffsetDateTime, fin: OffsetDateTime,
@@ -60,6 +62,7 @@ private object Rutas {
             "&inicio=${Uri.encode(inicio.toString())}&fin=${Uri.encode(fin.toString())}&vehiculo=${vehiculoId.orEmpty()}"
 
     fun pago(reservaId: String, estado: String?) = "pago/$reservaId?estado=${Uri.encode(estado.orEmpty())}"
+    fun pagoDeuda(reservaId: String, estado: String?) = "pago-deuda/$reservaId?estado=${Uri.encode(estado.orEmpty())}"
     fun ticket(reservaId: String) = "ticket/$reservaId"
 }
 
@@ -130,6 +133,13 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
                     alVolver = { nav.popBackStack() },
                 )
             }
+            composable(Rutas.PAGO_DEUDA) { e ->
+                PagoDeudaResultadoScreen(
+                    reservaId = e.arguments!!.getString("reservaId")!!,
+                    estadoMp = e.arguments!!.getString("estado")?.ifBlank { null },
+                    alVolver = { nav.popBackStack() },
+                )
+            }
             composable(Rutas.TICKET) { e ->
                 TicketScreen(
                     reservaId = e.arguments!!.getString("reservaId")!!,
@@ -156,12 +166,14 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
     }
 
     // Mercado Pago volvió a la app: drivly://pago-resultado?collection_status=approved&external_reference=<id>
+    // (el de una deuda es deuda:<id>)
     LaunchedEffect(deepLink) {
         val uri = deepLink ?: return@LaunchedEffect
-        val reservaId = uri.getQueryParameter("external_reference")
-        if (reservaId != null) {
+        val referencia = uri.getQueryParameter("external_reference")
+        if (referencia != null) {
             val estado = uri.getQueryParameter("collection_status") ?: uri.getQueryParameter("mp_status")
-            nav.navigate(Rutas.pago(reservaId, estado))
+            val reservaId = referencia.removePrefix("deuda:")
+            nav.navigate(if (reservaId != referencia) Rutas.pagoDeuda(reservaId, estado) else Rutas.pago(reservaId, estado))
         }
         alConsumirDeepLink()
     }

@@ -38,12 +38,17 @@ class VehiculoOcupado(ReservaError):
 
 class DeudaPendiente(ReservaError):
     status_code = status.HTTP_402_PAYMENT_REQUIRED
-    default_detail = "Tenés una deuda pendiente: saldala para poder reservar."
+    default_detail = "Tenés una deuda pendiente: saldala desde Mis reservas para poder reservar."
     default_code = "DEUDA_PENDIENTE"
 
 
 class EstadoInvalido(ReservaError):
     default_code = "ESTADO_INVALIDO"
+
+
+class SinLugarPresencial(ReservaError):
+    default_detail = "No hay lugar para clientes sin reserva: los libres están comprometidos con reservas de la app."
+    default_code = "SIN_LUGAR_PRESENCIAL"
 
 
 class GarajeSinMercadoPago(ReservaError):

@@ -110,3 +110,29 @@ def test_alta_y_baja_de_playero(admin_garaje, garaje, cliente, conductor):
     assert c.delete(f"/api/garajes/{garaje.id}/playeros/{playero.id}/").status_code == 204
     playero.refresh_from_db()
     assert playero.garaje is None and playero.is_active is False
+
+
+def test_tarifas_del_garaje_se_leen_y_reemplazan(admin_garaje, garaje, cliente):
+    c = cliente(admin_garaje)
+    url = f"/api/garajes/{garaje.id}/tarifas/"
+    hora = {"categoria": "AUTO", "modalidad": "HORA", "precio_fraccion": 320, "fraccion_min": 15,
+            "minimo_fracciones": 4, "precio_periodo": None}
+    mensual = {"categoria": "AUTO", "modalidad": "MENSUAL", "precio_fraccion": None, "fraccion_min": None,
+               "minimo_fracciones": None, "precio_periodo": 150000}
+    assert c.put(url, [hora, mensual], format="json").status_code == 200
+    assert c.put(url, [hora], format="json").status_code == 200  # lo que no viene deja de ofrecerse
+    assert [t["modalidad"] for t in c.get(url).data] == ["HORA"]
+
+
+def test_tarifa_invalida_no_borra_las_existentes(admin_garaje, garaje, cliente):
+    c = cliente(admin_garaje)
+    url = f"/api/garajes/{garaje.id}/tarifas/"
+    Tarifa.objects.create(garaje=garaje, categoria="AUTO", modalidad="HORA", precio_fraccion=320,
+                          fraccion_min=15, minimo_fracciones=1)
+    malo = {"categoria": "AUTO", "modalidad": "HORA", "precio_fraccion": 0, "fraccion_min": 15, "minimo_fracciones": 1}
+    assert c.put(url, [malo], format="json").status_code == 400
+    assert garaje.tarifas.count() == 1
+
+
+def test_tarifas_de_otro_admin_dan_404(otro_admin, garaje, cliente):
+    assert cliente(otro_admin).get(f"/api/garajes/{garaje.id}/tarifas/").status_code == 404

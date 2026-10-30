@@ -53,6 +53,8 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | GET | `reservas/{id}/qr/` | `{ qr_token, valido_desde, valido_hasta, reutilizable }` |
 | POST | `reservas/{id}/cancelar/` | Cancela; `reembolso`: `REEMBOLSADO`, `REEMBOLSO_FALLIDO` (se reintenta solo) o `null` |
 | GET | `reservas/` | Mis reservas (paginado: `results`) |
+| GET | `operacion/mis-deudas/` | Deudas pendientes del conductor (lista sin paginar) |
+| POST | `operacion/mis-deudas/{reserva_id}/pagar/` | `{ "canal": "app" }` → `{ init_point }`; vuelve con `external_reference=deuda:<reserva_id>` |
 
 Las fechas van en ISO 8601 con zona horaria. Los errores de negocio responden `{ "detail", "code" }`
 (por ejemplo `SIN_CUPO` con `cercanos`, `GARAJE_SIN_MERCADO_PAGO`, `DEUDA_PENDIENTE`, `ESTADO_INVALIDO`):

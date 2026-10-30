@@ -72,6 +72,49 @@ fun PagoResultadoScreen(reservaId: String, estadoMp: String?, alConfirmar: (Stri
         esperando = false
     }
 
+    PantallaResultado(esperando, mensaje, alVolver)
+}
+
+/** Igual que con una reserva: la deuda se da por saldada recién cuando el webhook lo confirma en el servidor. */
+@Composable
+fun PagoDeudaResultadoScreen(reservaId: String, estadoMp: String?, alVolver: () -> Unit) {
+    val app = LocalContext.current.applicationContext as DrivlyApplication
+    val aprobado = estadoMp == "approved" || estadoMp == "success"
+    val pendiente = estadoMp == "pending" || estadoMp == "in_process"
+    var mensaje by remember {
+        mutableStateOf(
+            when {
+                aprobado -> "Pago aprobado. Saldando tu deuda…"
+                pendiente -> "Tu pago está pendiente de acreditación. La deuda se salda cuando Mercado Pago lo apruebe."
+                else -> "El pago no se completó. La deuda sigue pendiente: podés volver a intentarlo desde Mis reservas."
+            }
+        )
+    }
+    var esperando by remember { mutableStateOf(aprobado) }
+
+    LaunchedEffect(reservaId) {
+        if (!aprobado) return@LaunchedEffect
+        repeat(15) {
+            try {
+                if (app.api.misDeudas().none { it.reservaId == reservaId }) {
+                    mensaje = "Deuda saldada. Ya podés volver a reservar."
+                    esperando = false
+                    return@LaunchedEffect
+                }
+            } catch (e: Exception) {
+                mensaje = e.comoErrorDrivly().message ?: mensaje
+            }
+            delay(2000)
+        }
+        mensaje = "Tu pago se está procesando. Revisá Mis reservas en unos minutos."
+        esperando = false
+    }
+
+    PantallaResultado(esperando, mensaje, alVolver)
+}
+
+@Composable
+private fun PantallaResultado(esperando: Boolean, mensaje: String, alVolver: () -> Unit) {
     Scaffold { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).padding(24.dp),

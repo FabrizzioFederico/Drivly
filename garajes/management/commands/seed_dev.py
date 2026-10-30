@@ -16,6 +16,7 @@ from garajes.models import Garaje, Tarifa
 
 
 ADMIN_EMAIL = "fabrizzio.federico@davinci.edu.ar"
+PLAYERO_EMAIL = "dev.playero@drivly.local"
 
 GARAJES = [
     {
@@ -121,9 +122,11 @@ class Command(BaseCommand):
                 self.stdout.write(f"  Usuario actualizado a ADMIN_GARAJE: {ADMIN_EMAIL}")
 
             for datos in GARAJES:
+                # Si ya existe sólo cambia de dueño: volver a correr el seed no pisa lo editado en el panel
                 garaje, creado = Garaje.objects.update_or_create(
                     nombre=datos["nombre"],
-                    defaults={**datos, "admin": admin},
+                    defaults={"admin": admin},
+                    create_defaults={**datos, "admin": admin},
                 )
                 if creado:
                     self.stdout.write(f"  Garaje creado: {garaje.nombre}")
@@ -132,5 +135,13 @@ class Command(BaseCommand):
                     self.stdout.write(f"    Tarifas: {len(TARIFAS[garaje.nombre])}")
                 else:
                     self.stdout.write(f"  Garaje reasignado a {ADMIN_EMAIL}: {garaje.nombre}")
+
+            # El acceso rápido de playero necesita un garaje asignado
+            garaje = Garaje.objects.get(nombre=GARAJES[0]["nombre"])
+            Usuario.objects.update_or_create(
+                email=PLAYERO_EMAIL,
+                defaults={"nombre": "Dev Playero", "rol": Rol.PLAYERO, "garaje": garaje},
+            )
+            self.stdout.write(f"  Playero {PLAYERO_EMAIL} asignado a {garaje.nombre}")
 
         self.stdout.write(self.style.SUCCESS("\nseed_dev completado."))

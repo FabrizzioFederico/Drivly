@@ -54,6 +54,7 @@ class ResultadoPago(models.TextChoices):
 
     PENDIENTE = "PENDIENTE", "Pendiente (no aprobado todavía)"
     CONFIRMO_RESERVA = "CONFIRMO_RESERVA", "Confirmó la reserva"
+    SALDO_DEUDA = "SALDO_DEUDA", "Saldó una deuda de overstay"
     MONTO_INCORRECTO = "MONTO_INCORRECTO", "Monto distinto al de la reserva (revisar)"
     REEMBOLSADO = "REEMBOLSADO", "Reembolsado"
     REEMBOLSO_FALLIDO = "REEMBOLSO_FALLIDO", "Reembolso fallido (se reintenta)"

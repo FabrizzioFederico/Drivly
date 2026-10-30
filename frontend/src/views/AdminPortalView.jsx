@@ -18,7 +18,7 @@ const STRIPES = 'repeating-linear-gradient(135deg,#7A8496 0 3px,#C9CFD8 3px 6px)
 
 function Kpis({ m }) {
   if (m === null) return <div className="grid grid-cols-3 gap-4">{[0, 1, 2].map((i) => <div key={i} className="card h-[110px] animate-pulse" />)}</div>;
-  if (!m?.ocupacion_pico) return null;
+  if (m.ocupacion_pico === undefined) return null;
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <div className="card flex flex-col gap-1.5 px-5 py-4">
@@ -96,7 +96,7 @@ function TarifasPanel({ garajeId }) {
       setGaraje(g);
       setConfig({ capacidad: g.capacidad, cupo_abonos: g.cupo_abonos, salida_estimada_default_min: g.salida_estimada_default_min, tolerancia_min: g.tolerancia_min, recargo_overstay: g.recargo_overstay });
       setTarifas(desdeFilas(t)); setMsg(null);
-      // métricas son opcionales — el endpoint puede no existir aún
+      // Un fallo de las métricas no impide editar capacidad y tarifas
       garajesService.metricas(garajeId).then(setMetricas).catch(() => setMetricas({}));
     })
     .catch((e) => setMsg({ ok: false, text: e.message }));

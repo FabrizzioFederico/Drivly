@@ -18,6 +18,7 @@ urlpatterns = [
     path("api/", include(router.urls)),
     path("api/", include("reservas.urls")),
     path("api/pagos/", include("pagos.urls")),
+    path("api/operacion/", include("operacion.urls")),
 ]
 
 # Sólo en desarrollo: en producción los archivos subidos no los sirve Django

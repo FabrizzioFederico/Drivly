@@ -9,6 +9,8 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from operacion.models import Deuda, MedioCobro
+from operacion.services import saldar_deuda
 from reservas.exceptions import EstadoInvalido, HoldVencidoSinCupo
 from reservas.models import EstadoReserva, Reserva
 from reservas.services import confirmar_pago
@@ -25,6 +27,9 @@ RESULTADOS_A_PROCESAR = (ResultadoPago.PENDIENTE, ResultadoPago.REEMBOLSO_FALLID
 # Desde dónde paga el conductor: define a dónde vuelve Mercado Pago al terminar
 CANAL_WEB, CANAL_APP = "web", "app"
 CANALES = (CANAL_WEB, CANAL_APP)
+
+# external_reference de los cobros de overstay; el de las reservas es sólo el id
+PREFIJO_DEUDA = "deuda:"
 
 
 def _sdk(access_token):
@@ -45,15 +50,9 @@ def calcular_comision(monto: Decimal) -> Decimal:
     return comision
 
 
-def crear_preferencia(reserva, canal=CANAL_WEB) -> str:
-    """
-    Crea una preferencia de Checkout Pro en la cuenta del garaje (POST /checkout/preferences con su token OAuth)
-    y devuelve init_point. MP acredita el pago al garaje y le transfiere a Drivly el marketplace_fee.
-    """
-    sdk = _sdk(access_token_de(reserva.garaje))  # GarajeSinMercadoPago (409) si el garaje no conectó su cuenta
-
+def _retorno(canal):
+    """Cómo vuelve el conductor del checkout: back_urls y, si se puede, auto_return."""
     frontend_url = settings.FRONTEND_URL
-    backend_url  = settings.BACKEND_URL
 
     if canal == CANAL_APP:
         # App Android: MP vuelve al deep link y la Custom Tab se cierra sola (doc. Checkout Pro mobile)
@@ -68,6 +67,23 @@ def crear_preferencia(reserva, canal=CANAL_WEB) -> str:
         )
         base = f"{frontend_url}/?"
 
+    return {
+        "back_urls": {
+            "success": f"{base}mp_status=success",
+            "failure": f"{base}mp_status=failure",
+            "pending": f"{base}mp_status=pending",
+        },
+        **({"auto_return": "approved"} if auto_return else {}),
+    }
+
+
+def crear_preferencia(reserva, canal=CANAL_WEB) -> str:
+    """
+    Crea una preferencia de Checkout Pro en la cuenta del garaje (POST /checkout/preferences con su token OAuth)
+    y devuelve init_point. MP acredita el pago al garaje y le transfiere a Drivly el marketplace_fee.
+    """
+    sdk = _sdk(access_token_de(reserva.garaje))  # GarajeSinMercadoPago (409) si el garaje no conectó su cuenta
+
     preference_data = {
         "items": [{
             "title": f"Reserva Drivly · {reserva.garaje.nombre}",
@@ -75,14 +91,10 @@ def crear_preferencia(reserva, canal=CANAL_WEB) -> str:
             "unit_price": float(reserva.monto),
             "currency_id": "ARS",
         }],
-        "back_urls": {
-            "success": f"{base}mp_status=success",
-            "failure": f"{base}mp_status=failure",
-            "pending": f"{base}mp_status=pending",
-        },
+        **_retorno(canal),
         "external_reference": str(reserva.id),
         "marketplace_fee": float(calcular_comision(reserva.monto)),
-        "notification_url": f"{backend_url}/api/pagos/webhook/",
+        "notification_url": f"{settings.BACKEND_URL}/api/pagos/webhook/",
         "statement_descriptor": "DRIVLY",
         # La preferencia vence junto con el hold: pasado ese momento MP no deja pagar.
         "expires": True,
@@ -90,7 +102,6 @@ def crear_preferencia(reserva, canal=CANAL_WEB) -> str:
         "expiration_date_to": _fecha_mp(reserva.hold_expira),
         # Efectivo (Rapipago, Pago Fácil) se acredita en horas o días: no sirve para un hold de 5 minutos.
         "payment_methods": {"excluded_payment_types": [{"id": "ticket"}, {"id": "atm"}]},
-        **({"auto_return": "approved"} if auto_return else {}),
     }
 
     result = sdk.preference().create(preference_data)
@@ -98,6 +109,33 @@ def crear_preferencia(reserva, canal=CANAL_WEB) -> str:
         raise RuntimeError(f"Error creando preferencia MP: {result['response']}")
 
     # MP ya no tiene sandbox: las pruebas usan usuarios de prueba con el mismo init_point.
+    return result["response"]["init_point"]
+
+
+def crear_cobro_deuda(deuda, canal=None) -> str:
+    """
+    Cobro del overstay en la cuenta del garaje: devuelve el init_point que el playero muestra como QR
+    o, con `canal`, el que abre el conductor desde su cuenta (CU-09) y lo trae de vuelta al terminar.
+    La deuda es del garaje (regla 4); la comisión se calcula sobre lo cobrado y sólo existe si el pago se concreta.
+    """
+    garaje = deuda.reserva.garaje
+    sdk = _sdk(access_token_de(garaje))
+    result = sdk.preference().create({
+        "items": [{
+            "title": f"Exceso de permanencia · {garaje.nombre}",
+            "quantity": 1,
+            "unit_price": float(deuda.monto),
+            "currency_id": "ARS",
+        }],
+        **(_retorno(canal) if canal else {}),
+        "external_reference": f"{PREFIJO_DEUDA}{deuda.reserva_id}",
+        "marketplace_fee": float(calcular_comision(deuda.monto)),
+        "notification_url": f"{settings.BACKEND_URL}/api/pagos/webhook/",
+        "statement_descriptor": "DRIVLY",
+        "payment_methods": {"excluded_payment_types": [{"id": "ticket"}, {"id": "atm"}]},
+    })
+    if result["status"] >= 400:
+        raise RuntimeError(f"Error creando el cobro de la deuda en MP: {result['response']}")
     return result["response"]["init_point"]
 
 
@@ -146,11 +184,14 @@ def procesar_notificacion_pago(payment_id, mp_user_id):
         raise RuntimeError(f"Error consultando el pago {payment_id} en MP: {respuesta['response']}")
     payment = respuesta["response"]
 
+    referencia = str(payment.get("external_reference") or "")
+    es_deuda = referencia.startswith(PREFIJO_DEUDA)
     try:
-        reserva = Reserva.objects.filter(pk=payment.get("external_reference")).first()
+        reserva = Reserva.objects.filter(pk=referencia.removeprefix(PREFIJO_DEUDA)).first()
     except ValidationError:  # external_reference que no es un UUID
         reserva = None
-    if reserva is None:
+    deuda = Deuda.objects.filter(reserva=reserva).first() if reserva and es_deuda else None
+    if reserva is None or (es_deuda and deuda is None):
         logger.warning("Pago %s de MP sin reserva asociada (external_reference=%r)",
                        payment_id, payment.get("external_reference"))
         return None
@@ -165,7 +206,7 @@ def procesar_notificacion_pago(payment_id, mp_user_id):
         pago, _ = Pago.objects.select_for_update().get_or_create(
             payment_id=str(payment["id"]),
             defaults={"reserva": reserva, "monto": Decimal(str(payment.get("transaction_amount") or 0)),
-                      "comision": calcular_comision(reserva.monto)},
+                      "comision": calcular_comision(deuda.monto if deuda else reserva.monto)},
         )
         pago.estado_mp = payment.get("status", "")
         pago.estado_detalle_mp = payment.get("status_detail") or ""
@@ -175,11 +216,21 @@ def procesar_notificacion_pago(payment_id, mp_user_id):
         if pago.estado_mp != "approved" or pago.resultado not in RESULTADOS_A_PROCESAR:
             return pago
 
-        if pago.monto != reserva.monto or payment.get("currency_id") != "ARS":
-            logger.error("Pago %s: pagó %s %s y la reserva %s cuesta %s ARS. No se confirma.",
-                         pago.payment_id, pago.monto, payment.get("currency_id"), reserva.id, reserva.monto)
+        esperado = deuda.monto if deuda else reserva.monto
+        if pago.monto != esperado or payment.get("currency_id") != "ARS":
+            logger.error("Pago %s: pagó %s %s y la reserva %s debía %s ARS. No se confirma.",
+                         pago.payment_id, pago.monto, payment.get("currency_id"), reserva.id, esperado)
             pago.resultado = ResultadoPago.MONTO_INCORRECTO
             pago.save(update_fields=["resultado", "actualizado_en"])
+            return pago
+
+        if deuda:
+            if saldar_deuda(reserva.id, MedioCobro.MERCADO_PAGO, pago.payment_id):
+                pago.resultado = ResultadoPago.SALDO_DEUDA
+                pago.save(update_fields=["resultado", "actualizado_en"])
+            else:  # ya la había cobrado el playero en efectivo
+                logger.warning("Pago %s de una deuda ya saldada (reserva %s): se reembolsa.", pago.payment_id, reserva.id)
+                _reembolsar(pago, sdk)
             return pago
 
         try:

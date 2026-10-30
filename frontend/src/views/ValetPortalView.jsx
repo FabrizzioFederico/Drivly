@@ -11,8 +11,6 @@ import { ars, hora } from '../lib/format';
 const SALIDAS = [60, 120, 240];
 const horasLabel = (m) => (m % 60 ? `${m} min` : `${m / 60} h`);
 
-const GARAJE_ID = Number(import.meta.env.VITE_DEFAULT_GARAJE_ID || 1);
-
 /**
  * Visor de cámara con BarcodeDetector nativo (Chrome/Android, Safari 17+).
  * Si el navegador no lo soporta, el playero usa el ingreso manual por patente o token.
@@ -70,9 +68,10 @@ function QrViewfinder({ active, onScan }) {
 }
 
 /* ---------- Modal de deuda por overstay (CU-08) ---------- */
-function OverstayModal({ deuda, onClose }) {
+function OverstayModal({ deuda, onClose, onSalidaConDeuda }) {
   const [pagado, setPagado] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
 
   // Polling del estado de pago de Mercado Pago (cada 3 s)
   useEffect(() => {
@@ -84,8 +83,9 @@ function OverstayModal({ deuda, onClose }) {
   }, [deuda.reserva_id, pagado]);
 
   const efectivo = async () => {
-    setBusy(true);
-    try { await operacionService.registrarEfectivo(deuda.reserva_id); setPagado({ medio: 'Efectivo' }); } finally { setBusy(false); }
+    setBusy(true); setError(null);
+    try { await operacionService.registrarEfectivo(deuda.reserva_id); setPagado({ medio: 'Efectivo' }); }
+    catch (e) { setError(e.message); } finally { setBusy(false); }
   };
 
   return (
@@ -112,18 +112,25 @@ function OverstayModal({ deuda, onClose }) {
 
         {!pagado ? (
           <>
-            <div className="flex items-center gap-3.5 rounded-[14px] bg-white p-3 text-ink">
-              <QRCodeSVG value={deuda.mp_qr_data} size={124} level="M" />
-              <div className="flex flex-col gap-1.5">
-                <span className="font-extrabold">QR Mercado Pago</span>
-                <span className="text-xs leading-snug text-ink-muted">El conductor escanea y paga {ars(deuda.total)} desde su app.</span>
-                <span className="flex items-center gap-1.5 text-xs font-bold text-hold-ink"><span className="h-2 w-2 animate-pulse rounded-full bg-hold" />Esperando pago…</span>
+            {deuda.mp_qr_data ? (
+              <div className="flex items-center gap-3.5 rounded-[14px] bg-white p-3 text-ink">
+                <QRCodeSVG value={deuda.mp_qr_data} size={124} level="M" />
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-extrabold">QR Mercado Pago</span>
+                  <span className="text-xs leading-snug text-ink-muted">El conductor escanea y paga {ars(deuda.total)} desde su app.</span>
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-hold-ink"><span className="h-2 w-2 animate-pulse rounded-full bg-hold" />Esperando pago…</span>
+                </div>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2.5">
+            ) : (
+              <p className="rounded-card bg-ink px-3 py-2.5 text-sm font-semibold text-ink-subtle">El cobro por Mercado Pago no está disponible. Podés cobrar en efectivo.</p>
+            )}
+            {error && <p role="alert" className="text-sm font-bold text-debt-light">{error}</p>}
+            <div className={`grid gap-2.5 ${deuda.mp_qr_data ? 'grid-cols-2' : ''}`}>
               <button onClick={efectivo} disabled={busy} className="btn-ghost-dark min-h-[64px]">Cobro en efectivo</button>
-              <button onClick={async () => { const r = await operacionService.estadoDeuda(deuda.reserva_id); if (r.pagado) setPagado({ medio: 'Mercado Pago', tx: r.transaccion_id }); }} className="btn-primary min-h-[64px]">Verificar pago</button>
+              {deuda.mp_qr_data && <button onClick={async () => { const r = await operacionService.estadoDeuda(deuda.reserva_id); if (r.pagado) setPagado({ medio: 'Mercado Pago', tx: r.transaccion_id }); }} className="btn-primary min-h-[64px]">Verificar pago</button>}
             </div>
+            {/* Regla 4: Drivly no indica retener el vehículo. La deuda queda en la cuenta y bloquea nuevas reservas. */}
+            <button onClick={onSalidaConDeuda} className="min-h-touch text-sm font-bold text-ink-subtle hover:text-white">Salida con deuda</button>
           </>
         ) : (
           <>
@@ -142,7 +149,9 @@ function OverstayModal({ deuda, onClose }) {
 
 /* ---------- Vista principal del playero ---------- */
 export default function ValetPortalView({ user }) {
-  const garajeId = user?.garaje ?? GARAJE_ID;
+  const [garaje, setGaraje] = useState(null); // el del playero, o el primero del admin que abre esta vista
+  const [sinGaraje, setSinGaraje] = useState(false);
+  const garajeId = garaje?.id;
   const [ocupacion, setOcupacion] = useState(null);
   const [mode, setMode] = useState(null); // 'ingreso' | 'egreso'
   const [manual, setManual] = useState('');
@@ -153,7 +162,13 @@ export default function ValetPortalView({ user }) {
   const [salidaMin, setSalidaMin] = useState(null); // salida estimada del cliente sin reserva
   const [derivar, setDerivar] = useState(null); // { titulo, detalle?, cercanos } (regla 6)
 
-  const loadOcupacion = useCallback(() => garajesService.ocupacion(garajeId).then(setOcupacion).catch(() => {}), [garajeId]);
+  useEffect(() => {
+    garajesService.list()
+      .then((gs) => { if (gs.length) setGaraje(gs[0]); else setSinGaraje(true); })
+      .catch(() => setSinGaraje(true));
+  }, []);
+
+  const loadOcupacion = useCallback(() => (garajeId ? garajesService.ocupacion(garajeId).then(setOcupacion).catch(() => {}) : undefined), [garajeId]);
   useEffect(() => { loadOcupacion(); const id = setInterval(loadOcupacion, 10000); return () => clearInterval(id); }, [loadOcupacion]);
 
   const ventana = salidaMin ?? ocupacion?.ventana_min ?? 120;
@@ -190,6 +205,7 @@ export default function ValetPortalView({ user }) {
         const res = mode === 'ingreso' ? await operacionService.ingreso(body) : await operacionService.egreso(body);
         setMovs((m) => [res.reserva, ...m.filter((x) => x.id !== res.reserva.id)].slice(0, 4));
         if (res.deuda) setDeuda(res.deuda);
+        else if (mode === 'egreso' && res.reserva.origen === 'PRESENCIAL') setFeedback({ ok: true, text: `Egreso registrado. Cobrar ${ars(res.reserva.total)}.` });
         else setFeedback({ ok: true, text: mode === 'ingreso' ? 'Ingreso registrado. Barrera abierta.' : 'Egreso registrado. Salida liberada.' });
         if (res.ocupacion) setOcupacion(res.ocupacion); else loadOcupacion();
       }
@@ -210,10 +226,19 @@ export default function ValetPortalView({ user }) {
     else procesar({ patente: v.replace(/[\s-]/g, '').toUpperCase() });
   };
 
+  if (sinGaraje) {
+    return (
+      <div className="card mx-auto flex max-w-[480px] flex-col gap-2 p-8">
+        <h2 className="text-[17px] font-extrabold">No tenés un garaje asignado</h2>
+        <p className="text-sm text-ink-muted">Pedile al administrador que te agregue desde Equipo (Playeros).</p>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex min-h-full w-full max-w-[768px] flex-col gap-3 bg-ink p-4 text-white sm:rounded-[28px]">
       <header className="flex min-h-touch items-center justify-between">
-        <div className="flex flex-col"><span className="text-[17px] font-extrabold">Plaza Serrano</span><span className="text-xs text-ink-subtle">Operador · {user?.nombre ?? 'Playero'}</span></div>
+        <div className="flex flex-col"><span className="text-[17px] font-extrabold">{garaje?.nombre ?? '…'}</span><span className="text-xs text-ink-subtle">Operador · {user?.nombre ?? 'Playero'}</span></div>
         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-ink-800 text-sm font-extrabold">{(user?.nombre ?? 'P').slice(0, 2).toUpperCase()}</span>
       </header>
 
@@ -285,7 +310,9 @@ export default function ValetPortalView({ user }) {
         </div>
       </div>
 
-      {deuda && <OverstayModal deuda={deuda} onClose={() => { setDeuda(null); setFeedback({ ok: true, text: 'Deuda saldada. Salida liberada.' }); loadOcupacion(); }} />}
+      {deuda && <OverstayModal deuda={deuda}
+        onClose={() => { setDeuda(null); setFeedback({ ok: true, text: 'Deuda saldada. Salida liberada.' }); loadOcupacion(); }}
+        onSalidaConDeuda={() => { setDeuda(null); setFeedback({ ok: false, text: `Salió con deuda de ${ars(deuda.total)}. La cuenta queda bloqueada hasta saldarla.` }); loadOcupacion(); }} />}
     </div>
   );
 }

@@ -89,4 +89,10 @@ interface DrivlyApi {
 
     @GET("reservas/{id}/qr/")
     suspend fun qr(@Path("id") id: String): Qr
+
+    @GET("operacion/mis-deudas/")
+    suspend fun misDeudas(): List<Deuda>
+
+    @POST("operacion/mis-deudas/{id}/pagar/")
+    suspend fun pagarDeuda(@Path("id") reservaId: String, @Body pedido: PedidoPago = PedidoPago()): RespuestaPago
 }

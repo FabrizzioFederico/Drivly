@@ -113,6 +113,16 @@ data class Cotizacion(
 )
 
 @Serializable
+data class Deuda(
+    @SerialName("reserva_id") val reservaId: String,
+    @SerialName("garaje_nombre") val garajeNombre: String,
+    val patente: String,
+    @SerialName("minutos_excedidos") val minutosExcedidos: Int,
+    @SerialName("egreso_real") val egresoReal: String,
+    val total: String,
+)
+
+@Serializable
 data class PedidoPago(val canal: String = "app")
 
 @Serializable

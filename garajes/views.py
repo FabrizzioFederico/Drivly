@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -15,6 +15,7 @@ from rest_framework.response import Response
 
 from cuentas.models import Rol, Usuario
 from cuentas.permissions import EsAdminGaraje
+from reportes.services import metricas_del_dia
 from reservas.disponibilidad import cercanos_a, garajes_con_disponibilidad
 from reservas.models import MODALIDADES_ABONO, EstadoReserva, Modalidad
 from reservas.ocupacion import ocupantes, pico
@@ -131,6 +132,15 @@ class GarajeViewSet(viewsets.ModelViewSet):
         garaje.activo = True
         garaje.save(update_fields=["activo"])
         return Response(GarajeSerializer(garaje).data)
+
+    @action(detail=True, methods=["get"])
+    def metricas(self, request, pk=None):
+        """GET /api/garajes/{id}/metricas/?fecha=YYYY-MM-DD — por defecto, hoy (CU-10)."""
+        texto = request.query_params.get("fecha")
+        fecha = parse_date(texto) if texto else None
+        if texto and fecha is None:
+            raise ValidationError({"fecha": "Usá el formato YYYY-MM-DD."})
+        return Response(metricas_del_dia(self.get_object(), fecha))
 
     @action(detail=True, methods=["get", "put"])
     def tarifas(self, request, pk=None):
