@@ -1,8 +1,10 @@
 package com.drivly.app.data
 
 import com.drivly.app.BuildConfig
+import com.drivly.app.data.api.Deuda
 import com.drivly.app.data.api.DrivlyApi
 import com.drivly.app.data.api.ErrorApi
+import com.drivly.app.data.api.GarajeDisponible
 import com.drivly.app.data.api.PedidoRefresh
 import com.drivly.app.data.api.Tokens
 import kotlinx.coroutines.runBlocking
@@ -87,7 +89,12 @@ private class RenovadorDeToken(private val sesion: Sesion, private val alPerderS
 }
 
 /** Error de la API listo para mostrar. `codigo` es el `code` de Drivly (SIN_CUPO, DEUDA_PENDIENTE...). */
-class ErrorDrivly(mensaje: String, val codigo: String? = null) : Exception(mensaje)
+class ErrorDrivly(
+    mensaje: String,
+    val codigo: String? = null,
+    val deuda: Deuda? = null,
+    val cercanos: List<GarajeDisponible>? = null,
+) : Exception(mensaje)
 
 fun Throwable.comoErrorDrivly(): ErrorDrivly = when (this) {
     is ErrorDrivly -> this
@@ -95,7 +102,7 @@ fun Throwable.comoErrorDrivly(): ErrorDrivly = when (this) {
         val cuerpo = response()?.errorBody()?.string().orEmpty()
         val error = runCatching { json.decodeFromString(ErrorApi.serializer(), cuerpo) }.getOrNull()
         when {
-            error?.detail != null -> ErrorDrivly(error.detail, error.code)
+            error?.detail != null -> ErrorDrivly(error.detail, error.code, error.deuda, error.cercanos)
             else -> ErrorDrivly(primerErrorDeCampo(cuerpo) ?: "Error del servidor (${code()}). Intentá nuevamente.")
         }
     }

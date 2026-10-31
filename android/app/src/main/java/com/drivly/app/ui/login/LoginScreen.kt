@@ -42,6 +42,7 @@ import com.drivly.app.BuildConfig
 import com.drivly.app.DrivlyApplication
 import com.drivly.app.data.Sesion
 import com.drivly.app.data.api.DrivlyApi
+import com.drivly.app.data.api.PedidoDevLogin
 import com.drivly.app.data.api.PedidoGoogleLogin
 import com.drivly.app.data.api.RespuestaLogin
 import com.drivly.app.data.comoErrorDrivly
@@ -49,6 +50,8 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import kotlinx.coroutines.launch
+
+private val ROLES_DE_LA_APP = setOf("CONDUCTOR", "PLAYERO")
 
 class LoginViewModel(private val api: DrivlyApi, private val sesion: Sesion) : ViewModel() {
     var cargando by mutableStateOf(false)
@@ -59,7 +62,7 @@ class LoginViewModel(private val api: DrivlyApi, private val sesion: Sesion) : V
     fun conGoogle(idToken: String) = ingresar { api.googleLogin(PedidoGoogleLogin(idToken)) }
 
     /** Acceso rápido de desarrollo (POST /auth/dev-login/, sólo con DEBUG=True en el backend). */
-    fun desarrollo() = ingresar { api.devLogin() }
+    fun desarrollo(rol: String = "CONDUCTOR") = ingresar { api.devLogin(PedidoDevLogin(rol)) }
 
     fun mostrarError(mensaje: String) {
         error = mensaje
@@ -71,10 +74,10 @@ class LoginViewModel(private val api: DrivlyApi, private val sesion: Sesion) : V
         viewModelScope.launch {
             try {
                 val r = pedido()
-                if (r.user.rol != "CONDUCTOR") {
-                    error = "Esta app es para conductores. Los garajes se administran desde el portal web."
+                if (r.user.rol !in ROLES_DE_LA_APP) {
+                    error = "Esta app es para conductores y playeros. Los garajes se administran desde el portal web."
                 } else {
-                    sesion.guardar(r.access, r.refresh, r.user.nombre) // la navegación reacciona al guardar
+                    sesion.guardar(r.access, r.refresh, r.user.nombre, r.user.rol) // la navegación reacciona al guardar
                 }
             } catch (e: Exception) {
                 error = e.comoErrorDrivly().message
@@ -127,9 +130,14 @@ fun LoginScreen() {
                 Spacer(Modifier.height(12.dp))
             }
             if (BuildConfig.DEBUG) {
-                OutlinedButton(onClick = vm::desarrollo, enabled = !vm.cargando,
+                OutlinedButton(onClick = { vm.desarrollo() }, enabled = !vm.cargando,
                     modifier = Modifier.fillMaxWidth().height(56.dp)) {
                     Text("Acceso rápido de desarrollo")
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = { vm.desarrollo("PLAYERO") }, enabled = !vm.cargando,
+                    modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                    Text("Acceso rápido como playero")
                 }
             }
 

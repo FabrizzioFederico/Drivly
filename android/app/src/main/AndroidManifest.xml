@@ -6,6 +6,9 @@
     <!-- Buscar garajes cerca del conductor. Aproximada alcanza; la precisa se pide pero es opcional. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- El playero escanea el QR del conductor. Sin cámara puede cargar la patente a mano. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:name=".DrivlyApplication"

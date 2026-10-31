@@ -1,6 +1,7 @@
 package com.drivly.app.ui
 
 import android.net.Uri
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,7 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -41,8 +45,10 @@ import com.drivly.app.ui.login.LoginScreen
 import com.drivly.app.ui.pago.PagoDeudaResultadoScreen
 import com.drivly.app.ui.pago.PagoResultadoScreen
 import com.drivly.app.ui.perfil.PerfilScreen
+import com.drivly.app.ui.playero.PlayeroScreen
 import com.drivly.app.ui.reservar.ReservarScreen
 import com.drivly.app.ui.reservas.MisReservasScreen
+import com.drivly.app.ui.theme.DrivlyTheme
 import com.drivly.app.ui.ticket.TicketScreen
 import kotlinx.coroutines.flow.StateFlow
 import java.time.OffsetDateTime
@@ -55,6 +61,7 @@ private object Rutas {
     const val PAGO = "pago/{reservaId}?estado={estado}"
     const val PAGO_DEUDA = "pago-deuda/{reservaId}?estado={estado}"
     const val TICKET = "ticket/{reservaId}"
+    const val PLAYERO = "playero"
 
     fun reservar(garajeId: String, nombre: String, direccion: String, inicio: OffsetDateTime, fin: OffsetDateTime,
                  vehiculoId: String?) =
@@ -79,11 +86,39 @@ private val PESTANIAS = listOf(
 fun DrivlyApp(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Unit) {
     val app = LocalContext.current.applicationContext as DrivlyApplication
     val logueado by app.sesion.logueado.collectAsStateWithLifecycle(initialValue = null)
+    val rol by app.sesion.rol.collectAsStateWithLifecycle(initialValue = null)
 
-    when (logueado) {
-        null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        false -> LoginScreen()
-        true -> AppLogueada(deepLinks, alConsumirDeepLink)
+    when {
+        logueado == null || rol == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        logueado == false -> LoginScreen()
+        rol == "PLAYERO" -> AppPlayero()
+        else -> AppLogueada(deepLinks, alConsumirDeepLink)
+    }
+}
+
+/** El playero ve lo mismo que en el portal web, siempre en oscuro (suele trabajar en subsuelos). */
+@Composable
+private fun AppPlayero() {
+    val nav = rememberNavController()
+    DrivlyTheme(darkTheme = true) {
+        IconosClarosEnBarraDeEstado()
+        NavHost(nav, startDestination = Rutas.PLAYERO) {
+            composable(Rutas.PLAYERO) { PlayeroScreen(alAbrirPerfil = { nav.navigate(Rutas.PERFIL) }) }
+            composable(Rutas.PERFIL) { PerfilScreen(alVolver = { nav.popBackStack() }) }
+        }
+    }
+}
+
+/** El teléfono puede estar en modo claro: sin esto los íconos de la barra de estado no se verían sobre negro. */
+@Composable
+private fun IconosClarosEnBarraDeEstado() {
+    val ventana = LocalActivity.current?.window ?: return
+    val vista = LocalView.current
+    DisposableEffect(ventana) {
+        val barras = WindowCompat.getInsetsController(ventana, vista)
+        val anterior = barras.isAppearanceLightStatusBars
+        barras.isAppearanceLightStatusBars = false
+        onDispose { barras.isAppearanceLightStatusBars = anterior }
     }
 }
 

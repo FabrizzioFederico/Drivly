@@ -19,18 +19,23 @@ class Sesion(private val context: Context) {
     private val claveAccess = stringPreferencesKey("access")
     private val claveRefresh = stringPreferencesKey("refresh")
     private val claveNombre = stringPreferencesKey("nombre")
+    private val claveRol = stringPreferencesKey("rol")
 
     @Volatile private var accessEnMemoria: String? = null
 
     val logueado: Flow<Boolean> = context.almacen.data.map { it[claveRefresh] != null }
     val nombre: Flow<String> = context.almacen.data.map { it[claveNombre].orEmpty() }
 
-    suspend fun guardar(access: String, refresh: String?, nombre: String? = null) {
+    /** Las sesiones de antes de que entrara el playero no guardaron el rol: eran todas de conductores. */
+    val rol: Flow<String> = context.almacen.data.map { it[claveRol] ?: "CONDUCTOR" }
+
+    suspend fun guardar(access: String, refresh: String?, nombre: String? = null, rol: String? = null) {
         accessEnMemoria = access
         context.almacen.edit { p ->
             p[claveAccess] = access
             if (refresh != null) p[claveRefresh] = refresh // el refresh rota: siempre guardar el último
             if (nombre != null) p[claveNombre] = nombre
+            if (rol != null) p[claveRol] = rol
         }
     }
 

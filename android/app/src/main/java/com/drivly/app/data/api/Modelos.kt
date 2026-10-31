@@ -92,6 +92,8 @@ data class Reserva(
     @SerialName("garaje_detalle") val garaje: GarajeResumen? = null,
     val patente: String = "",
     val categoria: String? = null,
+    /** APP o PRESENCIAL (cliente sin reserva, sólo lo ve el playero). */
+    val origen: String = "APP",
     val modalidad: String = "HORA",
     val inicio: String,
     val fin: String,
@@ -120,7 +122,69 @@ data class Deuda(
     @SerialName("minutos_excedidos") val minutosExcedidos: Int,
     @SerialName("egreso_real") val egresoReal: String,
     val total: String,
+    // Lo que usa el playero para cobrarla
+    @SerialName("tolerancia_min") val toleranciaMin: Int = 0,
+    @SerialName("fraccion_min") val fraccionMin: Int = 15,
+    val fracciones: Int = 0,
+    @SerialName("precio_fraccion") val precioFraccion: String = "0",
+    /** Porcentaje: "0.50" = +50 %. */
+    val recargo: String = "0",
+    @SerialName("monto_condonado") val montoCondonado: String = "0",
+    @SerialName("fin_reservado") val finReservado: String? = null,
+    /** init_point para mostrar como QR; vacío si Mercado Pago no está disponible. */
+    @SerialName("mp_qr_data") val mpQrData: String = "",
+    /** false en otro garaje (CP-30): la deuda es del que la generó y sólo se cobra por QR. */
+    val efectivo: Boolean = true,
 )
+
+@Serializable
+data class GarajeOperado(val id: String, val nombre: String)
+
+@Serializable
+data class AlertaOverstay(
+    @SerialName("reserva_id") val reservaId: String,
+    val patente: String,
+    val inicio: String,
+)
+
+/** Semáforo del playero (regla 6): `libresPresencial` es cuántos clientes sin reserva pueden entrar ahora. */
+@Serializable
+data class Ocupacion(
+    val capacidad: Int,
+    val libres: Int,
+    @SerialName("libres_presencial") val libresPresencial: Int,
+    @SerialName("ocupados_app") val ocupadosApp: Int,
+    @SerialName("ocupados_abonos") val ocupadosAbonos: Int = 0,
+    @SerialName("ocupados_presencial") val ocupadosPresencial: Int,
+    @SerialName("proximas_app") val proximasApp: Int,
+    @SerialName("ventana_min") val ventanaMin: Int,
+    @SerialName("alertas_overstay") val alertasOverstay: List<AlertaOverstay> = emptyList(),
+)
+
+/** Ingreso, egreso o sin lugar: va el QR o la patente; la salida estimada sólo en clientes sin reserva. */
+@Serializable
+data class PedidoEscaneo(
+    val garaje: String,
+    @SerialName("qr_token") val qrToken: String? = null,
+    val patente: String? = null,
+    @SerialName("salida_estimada") val salidaEstimada: String? = null,
+)
+
+@Serializable
+data class RespuestaOperacion(val reserva: Reserva, val deuda: Deuda? = null, val ocupacion: Ocupacion? = null)
+
+@Serializable
+data class Reembolso(val monto: String, val estado: String)
+
+@Serializable
+data class RespuestaSinLugar(
+    val reserva: Reserva,
+    val reembolso: Reembolso,
+    val cercanos: List<GarajeDisponible> = emptyList(),
+)
+
+@Serializable
+data class EstadoDeuda(val pagado: Boolean, @SerialName("transaccion_id") val transaccionId: String? = null)
 
 @Serializable
 data class PedidoPago(val canal: String = "app")
@@ -137,4 +201,11 @@ data class Qr(
 )
 
 @Serializable
-data class ErrorApi(val detail: String? = null, val code: String? = null)
+data class ErrorApi(
+    val detail: String? = null,
+    val code: String? = null,
+    /** En DEUDA_PATENTE: la deuda a cobrar antes del ingreso. */
+    val deuda: Deuda? = null,
+    /** En SIN_LUGAR_PRESENCIAL: garajes a los que derivar al cliente. */
+    val cercanos: List<GarajeDisponible>? = null,
+)

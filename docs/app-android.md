@@ -56,8 +56,24 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | GET | `operacion/mis-deudas/` | Deudas pendientes del conductor (lista sin paginar) |
 | POST | `operacion/mis-deudas/{reserva_id}/pagar/` | `{ "canal": "app" }` → `{ init_point }`; vuelve con `external_reference=deuda:<reserva_id>` |
 
+## Endpoints del playero
+
+Con rol `PLAYERO` la app abre `ui/playero/PlayeroScreen.kt`, el equivalente de `ValetPortalView.jsx`.
+
+| Método | Ruta | Uso |
+|---|---|---|
+| GET | `garajes/` | El garaje del playero (paginado; vacío si no tiene uno asignado) |
+| GET | `garajes/{id}/ocupacion/` | Semáforo y `alertas_overstay`; se consulta cada 10 s |
+| GET | `garajes/{id}/cercanos/` | Garajes a los que derivar |
+| POST | `operacion/ingreso/` | `{ garaje, qr_token }` o `{ garaje, patente, salida_estimada }` |
+| POST | `operacion/egreso/` | `{ garaje, qr_token \| patente }` → `{ reserva, deuda, ocupacion }` |
+| POST | `operacion/sin-lugar/` | `{ garaje, qr_token }` → `{ reserva, reembolso, cercanos }` |
+| GET | `operacion/deudas/{reserva_id}/` | `{ pagado, transaccion_id }`; se consulta cada 3 s mientras se muestra el QR |
+| POST | `operacion/deudas/{reserva_id}/efectivo/` | Registra el cobro en efectivo |
+
 Las fechas van en ISO 8601 con zona horaria. Los errores de negocio responden `{ "detail", "code" }`
-(por ejemplo `SIN_CUPO` con `cercanos`, `GARAJE_SIN_MERCADO_PAGO`, `DEUDA_PENDIENTE`, `ESTADO_INVALIDO`):
+(por ejemplo `SIN_CUPO` con `cercanos`, `GARAJE_SIN_MERCADO_PAGO`, `DEUDA_PENDIENTE`, `ESTADO_INVALIDO`,
+`DEUDA_PATENTE` con `deuda`, `SIN_LUGAR_PRESENCIAL` con `cercanos`):
 la app decide qué mostrar según `code`.
 
 ## Pago con Mercado Pago (Checkout Pro mobile)

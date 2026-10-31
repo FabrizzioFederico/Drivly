@@ -12,7 +12,7 @@ import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-/** Endpoints del conductor. Las rutas son relativas a BuildConfig.API_URL (termina en /api/). */
+/** Endpoints del conductor y del playero. Las rutas son relativas a BuildConfig.API_URL (termina en /api/). */
 interface DrivlyApi {
 
     @POST("auth/dev-login/")
@@ -95,4 +95,31 @@ interface DrivlyApi {
 
     @POST("operacion/mis-deudas/{id}/pagar/")
     suspend fun pagarDeuda(@Path("id") reservaId: String, @Body pedido: PedidoPago = PedidoPago()): RespuestaPago
+
+    // ---------- Playero ----------
+
+    /** Para el playero devuelve sólo su garaje. */
+    @GET("garajes/")
+    suspend fun misGarajes(): Pagina<GarajeOperado>
+
+    @GET("garajes/{id}/ocupacion/")
+    suspend fun ocupacion(@Path("id") garajeId: String): Ocupacion
+
+    @GET("garajes/{id}/cercanos/")
+    suspend fun cercanos(@Path("id") garajeId: String): List<GarajeDisponible>
+
+    @POST("operacion/ingreso/")
+    suspend fun ingreso(@Body pedido: PedidoEscaneo): RespuestaOperacion
+
+    @POST("operacion/egreso/")
+    suspend fun egreso(@Body pedido: PedidoEscaneo): RespuestaOperacion
+
+    @POST("operacion/sin-lugar/")
+    suspend fun sinLugar(@Body pedido: PedidoEscaneo): RespuestaSinLugar
+
+    @GET("operacion/deudas/{id}/")
+    suspend fun estadoDeuda(@Path("id") reservaId: String): EstadoDeuda
+
+    @POST("operacion/deudas/{id}/efectivo/")
+    suspend fun cobrarEnEfectivo(@Path("id") reservaId: String): EstadoDeuda
 }

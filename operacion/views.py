@@ -64,13 +64,14 @@ def _escaneo(request):
 
 
 def _deuda_json(deuda, mp_qr_data=""):
+    # Los montos van como texto, igual que en los serializers: la app Android los espera así.
     return {
         "reserva_id": deuda.reserva_id, "patente": deuda.patente, "minutos_excedidos": deuda.minutos_excedidos,
         "tolerancia_min": deuda.tolerancia_min, "fraccion_min": deuda.fraccion_min, "fracciones": deuda.fracciones,
-        "precio_fraccion": deuda.precio_fraccion, "recargo": deuda.recargo, "total": deuda.monto,
+        "precio_fraccion": str(deuda.precio_fraccion), "recargo": str(deuda.recargo), "total": str(deuda.monto),
         "mp_qr_data": mp_qr_data, "fin_reservado": deuda.reserva.fin, "egreso_real": deuda.egreso_real,
         "garaje_nombre": deuda.reserva.garaje.nombre, "estado": deuda.estado,
-        "monto_condonado": deuda.monto_condonado, "motivo_condonacion": deuda.motivo_condonacion,
+        "monto_condonado": str(deuda.monto_condonado), "motivo_condonacion": deuda.motivo_condonacion,
     }
 
 
@@ -139,7 +140,7 @@ class SinLugarView(_OperacionView):
         )
         return Response({
             "reserva": ReservaSerializer(reserva).data,
-            "reembolso": {"monto": reserva.monto, "estado": pago.resultado if pago else "SIN_PAGO"},
+            "reembolso": {"monto": str(reserva.monto), "estado": pago.resultado if pago else "SIN_PAGO"},
             "cercanos": cercanos,
         })
 

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.AlertDialog
@@ -32,6 +33,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
@@ -178,7 +180,7 @@ class PerfilViewModel(private val api: DrivlyApi, private val sesion: Sesion) : 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PerfilScreen() {
+fun PerfilScreen(alVolver: (() -> Unit)? = null) {
     val context = LocalContext.current
     val app = context.applicationContext as DrivlyApplication
     val vm: PerfilViewModel = viewModel { PerfilViewModel(app.api, app.sesion) }
@@ -202,7 +204,16 @@ fun PerfilScreen() {
         snackbarHost = { SnackbarHost(avisos) },
         // El título es el nombre del usuario ("Perfil" mientras carga o si todavía no tiene uno)
         topBar = {
-            TopAppBar(title = { Text(u?.nombre?.ifBlank { null } ?: "Perfil", maxLines = 1, overflow = TextOverflow.Ellipsis) })
+            TopAppBar(
+                title = { Text(u?.nombre?.ifBlank { null } ?: "Perfil", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = {
+                    if (alVolver != null) {
+                        IconButton(onClick = alVolver) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        }
+                    }
+                },
+            )
         },
     ) { padding ->
         if (u == null) {

@@ -121,8 +121,8 @@ def test_cp18_overstay_genera_deuda_y_bloquea_al_conductor(cliente, playero, gar
         res = escanear(cliente(playero), EGRESO, garaje, r)
     d = res.data["deuda"]
     assert res.data["reserva"]["estado"] == "CON_DEUDA"
-    assert (d["minutos_excedidos"], d["fracciones"], d["total"]) == (30, 2, Decimal("3000.00"))
-    assert d["recargo"] == Decimal("0.50") and d["mp_qr_data"] == ""
+    assert (d["minutos_excedidos"], d["fracciones"], d["total"]) == (30, 2, "3000.00")
+    assert d["recargo"] == "0.50" and d["mp_qr_data"] == ""
     assert reservas.tiene_deuda(conductor)
 
 
@@ -220,7 +220,7 @@ def test_cu09_el_conductor_ve_sus_deudas_pendientes(cliente, conductor, crear_us
     r = con_deuda(garaje, vehiculo)
     datos = cliente(conductor).get(MIS_DEUDAS).data
     assert [d["reserva_id"] for d in datos] == [r.id]
-    assert (datos[0]["garaje_nombre"], datos[0]["total"]) == (garaje.nombre, Decimal("3000.00"))
+    assert (datos[0]["garaje_nombre"], datos[0]["total"]) == (garaje.nombre, "3000.00")
     assert cliente(crear_usuario("otro@test.com")).get(MIS_DEUDAS).data == []
 
 
@@ -357,7 +357,7 @@ def test_condonacion_total_libera_la_cuenta(cliente, admin_garaje, conductor, ga
 def test_condonacion_parcial_baja_el_saldo_y_sigue_suspendida(cliente, admin_garaje, conductor, garaje, vehiculo):
     r = con_deuda(garaje, vehiculo)
     c = cliente(admin_garaje)
-    assert condonar(c, r, motivo="Demora", monto="1000").data["total"] == Decimal("2000.00")
+    assert condonar(c, r, motivo="Demora", monto="1000").data["total"] == "2000.00"
     assert reservas.tiene_deuda(conductor)
     condonar(c, r, motivo="Segundo reclamo", monto="500")
     d = Deuda.objects.get(reserva=r)
@@ -563,7 +563,7 @@ def test_cp27_sin_lugar_reembolsa_y_registra_incidente(cliente, playero, garaje,
                         resultado=ResultadoPago.CONFIRMO_RESERVA)
     res = escanear(cliente(playero), SIN_LUGAR, garaje, r)
     assert res.status_code == 200 and res.data["reserva"]["estado"] == "SIN_LUGAR"
-    assert res.data["reembolso"] == {"monto": Decimal("4000.00"), "estado": ResultadoPago.REEMBOLSADO}
+    assert res.data["reembolso"] == {"monto": "4000.00", "estado": ResultadoPago.REEMBOLSADO}
     assert mp.reembolsos == ["50"]
     assert Incidente.objects.filter(garaje=garaje, reserva=r, registrado_por=playero).exists()
 

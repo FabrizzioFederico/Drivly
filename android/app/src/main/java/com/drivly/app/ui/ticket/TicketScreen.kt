@@ -214,7 +214,7 @@ fun TicketScreen(reservaId: String, alVolver: (mensaje: String?) -> Unit) {
     }
 }
 
-private fun generarQr(contenido: String, lado: Int): Bitmap {
+fun generarQr(contenido: String, lado: Int): Bitmap {
     val matriz = QRCodeWriter().encode(
         contenido, BarcodeFormat.QR_CODE, lado, lado,
         mapOf(EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M, EncodeHintType.MARGIN to 1),

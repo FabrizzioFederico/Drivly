@@ -89,6 +89,12 @@ dependencies {
     implementation(libs.androidx.browser)
     implementation(libs.zxing.core)
 
+    // Escaneo del QR por el playero (ML Kit con el modelo incluido en la app)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.mlkit.barcode)
+
     // Mapa (OpenStreetMap con MapLibre) y ubicación del conductor
     implementation(libs.maplibre)
     implementation(libs.play.services.location)
