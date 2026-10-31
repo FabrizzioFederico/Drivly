@@ -57,16 +57,17 @@ private object Rutas {
     const val BUSCAR = "buscar"
     const val RESERVAS = "reservas"
     const val PERFIL = "perfil"
-    const val RESERVAR = "reservar/{garajeId}?nombre={nombre}&direccion={direccion}&inicio={inicio}&fin={fin}&vehiculo={vehiculo}"
+    const val RESERVAR = "reservar/{garajeId}?nombre={nombre}&direccion={direccion}&inicio={inicio}&fin={fin}&vehiculo={vehiculo}&modalidad={modalidad}"
     const val PAGO = "pago/{reservaId}?estado={estado}"
     const val PAGO_DEUDA = "pago-deuda/{reservaId}?estado={estado}"
     const val TICKET = "ticket/{reservaId}"
     const val PLAYERO = "playero"
 
     fun reservar(garajeId: String, nombre: String, direccion: String, inicio: OffsetDateTime, fin: OffsetDateTime,
-                 vehiculoId: String?) =
+                 vehiculoId: String?, modalidad: String) =
         "reservar/$garajeId?nombre=${Uri.encode(nombre)}&direccion=${Uri.encode(direccion)}" +
-            "&inicio=${Uri.encode(inicio.toString())}&fin=${Uri.encode(fin.toString())}&vehiculo=${vehiculoId.orEmpty()}"
+            "&inicio=${Uri.encode(inicio.toString())}&fin=${Uri.encode(fin.toString())}&vehiculo=${vehiculoId.orEmpty()}" +
+            "&modalidad=$modalidad"
 
     fun pago(reservaId: String, estado: String?) = "pago/$reservaId?estado=${Uri.encode(estado.orEmpty())}"
     fun pagoDeuda(reservaId: String, estado: String?) = "pago-deuda/$reservaId?estado=${Uri.encode(estado.orEmpty())}"
@@ -96,7 +97,7 @@ fun DrivlyApp(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Unit) {
     }
 }
 
-/** El playero ve lo mismo que en el portal web, siempre en oscuro (suele trabajar en subsuelos). */
+/** El playero opera sólo desde la app, siempre en oscuro (suele trabajar en subsuelos). */
 @Composable
 private fun AppPlayero() {
     val nav = rememberNavController()
@@ -140,7 +141,7 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
         NavHost(nav, startDestination = Rutas.BUSCAR) {
             composable(Rutas.BUSCAR) {
                 BuscarScreen(
-                    alElegir = { g, h, v -> nav.navigate(Rutas.reservar(g.id, g.nombre, g.direccion, h.inicio, h.fin, v?.id)) },
+                    alElegir = { g, h, v -> nav.navigate(Rutas.reservar(g.id, g.nombre, g.direccion, h.inicio, h.fin, v?.id, h.modalidad)) },
                     mensaje = mensaje,
                     alMostrarMensaje = { mensaje = null },
                 )
@@ -149,15 +150,24 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
             composable(Rutas.PERFIL) { PerfilScreen() }
             composable(Rutas.RESERVAR) { e ->
                 val a = e.arguments!!
+                val inicio = OffsetDateTime.parse(a.getString("inicio"))
+                val fin = OffsetDateTime.parse(a.getString("fin"))
+                val vehiculo = a.getString("vehiculo")?.ifBlank { null }
+                val modalidad = a.getString("modalidad") ?: "HORA"
                 ReservarScreen(
                     garajeId = a.getString("garajeId")!!,
                     nombre = a.getString("nombre").orEmpty(),
                     direccion = a.getString("direccion").orEmpty(),
-                    inicio = OffsetDateTime.parse(a.getString("inicio")),
-                    fin = OffsetDateTime.parse(a.getString("fin")),
-                    vehiculoId = a.getString("vehiculo")?.ifBlank { null },
+                    inicio = inicio,
+                    fin = fin,
+                    vehiculoId = vehiculo,
+                    modalidad = modalidad,
                     alVolver = { nav.popBackStack() },
                     alConfirmarSinPago = { id -> nav.irAlTicket(id) },
+                    alCambiarGaraje = { g ->
+                        nav.popBackStack()
+                        nav.navigate(Rutas.reservar(g.id, g.nombre, g.direccion, inicio, fin, vehiculo, modalidad))
+                    },
                 )
             }
             composable(Rutas.PAGO) { e ->

@@ -51,7 +51,7 @@ import com.drivly.app.ui.components.EstadoChip
 import com.drivly.app.ui.components.LocalEspacioBarra
 import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.ui.fechaHora
-import com.drivly.app.ui.hora
+import com.drivly.app.ui.periodo
 import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
 
@@ -181,7 +181,7 @@ private fun FilaReserva(r: Reserva, alAbrirTicket: (String) -> Unit) {
             overlineContent = { EstadoChip(estadoVisible(r)) },
             headlineContent = { Text(r.garaje?.nombre ?: "Reserva", style = MaterialTheme.typography.titleMedium) },
             supportingContent = {
-                Text("${fechaHora(r.inicio)} a ${hora(r.fin)} · ${r.patente} · ${ars(r.total)}",
+                Text("${periodo(r.modalidad, r.inicio, r.fin)} · ${r.patente} · ${ars(r.total)}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             },
             trailingContent = if (conTicket) ({ Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Ver ticket") }) else null,

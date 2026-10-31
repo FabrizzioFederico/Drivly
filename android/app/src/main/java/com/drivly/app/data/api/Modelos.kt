@@ -54,9 +54,15 @@ data class Vehiculo(
     val patente: String,
     val categoria: String? = null,
     @SerialName("estado_validacion") val estadoValidacion: String,
+    /** Si DataCar no la resolvió, el conductor declara auto o camioneta (regla 3). */
+    @SerialName("puede_declarar") val puedeDeclarar: Boolean = false,
 ) {
     val validado get() = estadoValidacion == "VALIDADO"
+    val rechazado get() = estadoValidacion == "RECHAZADO"
 }
+
+@Serializable
+data class PedidoCategoria(val categoria: String)
 
 @Serializable
 data class PedidoVehiculo(val patente: String)

@@ -4,7 +4,9 @@ import com.drivly.app.data.api.ErrorApi
 import com.drivly.app.data.api.Ocupacion
 import com.drivly.app.data.api.PedidoEscaneo
 import com.drivly.app.data.api.RespuestaOperacion
+import com.drivly.app.data.api.Vehiculo
 import com.drivly.app.data.json
+import com.drivly.app.ui.buscar.Horario
 import com.drivly.app.ui.playero.Nivel
 import com.drivly.app.ui.playero.esPatente
 import com.drivly.app.ui.playero.horasLabel
@@ -14,6 +16,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.OffsetDateTime
 
 class PlayeroTest {
     @Test
@@ -36,6 +39,23 @@ class PlayeroTest {
     fun etiquetaDeSalida() {
         assertEquals("2 h", horasLabel(120))
         assertEquals("90 min", horasLabel(90))
+    }
+
+    @Test
+    fun abonoTerminaSegunSuModalidad() {
+        val inicio = OffsetDateTime.parse("2026-01-31T10:00:00-03:00")
+        assertEquals(inicio.plusHours(3), Horario(inicio, 3).fin)
+        assertEquals(OffsetDateTime.parse("2026-02-07T10:00:00-03:00"), Horario(inicio, 3, "SEMANAL").fin)
+        assertEquals(OffsetDateTime.parse("2026-02-28T10:00:00-03:00"), Horario(inicio, 3, "MENSUAL").fin) // como el backend
+        assertEquals(OffsetDateTime.parse("2027-01-31T10:00:00-03:00"), Horario(inicio, 3, "ANUAL").fin)
+    }
+
+    @Test
+    fun vehiculoSinValidarSePuedeDeclarar() {
+        val v = json.decodeFromString(Vehiculo.serializer(),
+            """{"id":"v","patente":"AB123CD","categoria":null,"estado_validacion":"PENDIENTE","puede_declarar":true}""")
+        assertFalse(v.validado)
+        assertTrue(v.puedeDeclarar)
     }
 
     @Test

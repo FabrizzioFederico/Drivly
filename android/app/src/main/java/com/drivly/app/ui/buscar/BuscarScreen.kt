@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -68,6 +70,7 @@ import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.data.tienePermisoDeUbicacion
 import com.drivly.app.data.ubicacionActual
 import com.drivly.app.ui.ars
+import com.drivly.app.ui.components.ListaCercanos
 import com.drivly.app.ui.components.LocalEspacioBarra
 import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.ui.components.bordeOscuro
@@ -78,9 +81,15 @@ import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
 import java.time.temporal.ChronoUnit
 
-/** Horario elegido; viaja a la pantalla de reserva. */
-data class Horario(val inicio: OffsetDateTime, val horas: Int) {
-    val fin: OffsetDateTime get() = inicio.plusHours(horas.toLong())
+/** Horario elegido; viaja a la pantalla de reserva. En un abono el fin sale de la modalidad, como en el backend. */
+data class Horario(val inicio: OffsetDateTime, val horas: Int, val modalidad: String = "HORA") {
+    val fin: OffsetDateTime
+        get() = when (modalidad) {
+            "SEMANAL" -> inicio.plusWeeks(1)
+            "MENSUAL" -> inicio.plusMonths(1)
+            "ANUAL" -> inicio.plusYears(1)
+            else -> inicio.plusHours(horas.toLong())
+        }
 
     companion object {
         /** Ahora redondeado al próximo cuarto de hora, como defaultHorario() de la web. */
@@ -110,6 +119,26 @@ class BuscarViewModel(private val api: DrivlyApi) : ViewModel() {
         private set
     var error by mutableStateOf<String?>(null)
         private set
+    /** Garaje lleno que tocó el conductor: en vez de bloquearlo se le ofrecen los cercanos (regla 6). */
+    var lleno by mutableStateOf<GarajeDisponible?>(null)
+        private set
+    /** null mientras se buscan. */
+    var cercanos by mutableStateOf<List<GarajeDisponible>?>(null)
+        private set
+
+    fun verCercanos(g: GarajeDisponible) {
+        lleno = g
+        cercanos = null
+        viewModelScope.launch {
+            cercanos = runCatching {
+                api.cercanos(g.id, horario.inicio.iso(), horario.fin.iso(), horario.modalidad, vehiculo?.id)
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    fun volverALaLista() {
+        lleno = null
+    }
 
     fun cambiarHorario(nuevo: Horario) {
         horario = nuevo
@@ -129,6 +158,7 @@ class BuscarViewModel(private val api: DrivlyApi) : ViewModel() {
     fun buscar() {
         cargando = true
         error = null
+        lleno = null
         viewModelScope.launch {
             try {
                 if (!vehiculosCargados) {
@@ -138,7 +168,7 @@ class BuscarViewModel(private val api: DrivlyApi) : ViewModel() {
                     vehiculosCargados = true
                 }
                 garajes = api.disponibles(posicion.lat, posicion.lng, horario.inicio.iso(), horario.fin.iso(),
-                    vehiculo = vehiculo?.id)
+                    modalidad = horario.modalidad, vehiculo = vehiculo?.id)
                 if (garajes.none { it.id == elegido }) elegido = null
             } catch (e: Exception) {
                 error = e.comoErrorDrivly().message
@@ -154,7 +184,7 @@ private val PERMISOS_UBICACION = arrayOf(Manifest.permission.ACCESS_COARSE_LOCAT
 /** Alto de la hoja plegada: el encabezado y la primera tarjeta, sin tapar demasiado el mapa. */
 private val ALTO_HOJA = 220.dp
 /** Lo que ocupa la tarjeta del horario sobre el mapa (para que el encuadre no deje garajes debajo). */
-private val ALTO_HORARIO = 150.dp
+private val ALTO_HORARIO = 210.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -246,10 +276,12 @@ private fun HojaGarajes(
     debajo: Dp,
     alElegir: (GarajeDisponible, Horario, Vehiculo?) -> Unit,
 ) {
+    val lleno = vm.lleno
     Column(Modifier.fillMaxWidth().fillMaxHeight(0.75f)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when {
+                    lleno != null -> "${lleno.nombre} está lleno"
                     vm.cargando && vm.garajes.isEmpty() -> "Buscando garajes…"
                     vm.garajes.size == 1 -> "1 garaje cerca"
                     else -> "${vm.garajes.size} garajes cerca"
@@ -258,16 +290,24 @@ private fun HojaGarajes(
                 modifier = Modifier.weight(1f),
             )
             if (vm.cargando) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            if (lleno != null) TextButton(onClick = vm::volverALaLista) { Text("Ver todos") }
         }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             when {
+                lleno != null -> Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + debajo)) {
+                    ListaCercanos("Estos garajes cercanos tienen lugar", vm.cercanos) { g ->
+                        alElegir(g, vm.horario, vm.vehiculo)
+                    }
+                }
                 vm.error != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(vm.error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center,
                         modifier = Modifier.padding(24.dp))
                     TextButton(onClick = vm::buscar) { Text("Reintentar") }
                 }
                 vm.garajes.isEmpty() && !vm.cargando -> Text(
-                    if (vm.posicion.esReal) "No hay garajes con Drivly a menos de 1 km de tu ubicación para ese horario."
+                    if (vm.horario.modalidad != "HORA") "Ningún garaje cercano ofrece este abono. Probá con otra modalidad."
+                    else if (vm.posicion.esReal) "No hay garajes con Drivly a menos de 1 km de tu ubicación para ese horario."
                     else "No hay garajes con Drivly en esta zona para ese horario.",
                     textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -280,7 +320,7 @@ private fun HojaGarajes(
                 ) {
                     items(vm.garajes, key = { it.id }) { g ->
                         TarjetaGaraje(g, elegido = g.id == vm.elegido, precioExacto = vm.vehiculo != null,
-                            onClick = { alElegir(g, vm.horario, vm.vehiculo) })
+                            onClick = { if (g.lugaresLibres > 0) alElegir(g, vm.horario, vm.vehiculo) else vm.verCercanos(g) })
                     }
                 }
             }
@@ -294,7 +334,6 @@ private fun TarjetaGaraje(g: GarajeDisponible, elegido: Boolean, precioExacto: B
     Tarjeta(
         Modifier.fillMaxWidth(),
         onClick = onClick,
-        enabled = !lleno,
         borde = if (elegido) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -309,7 +348,7 @@ private fun TarjetaGaraje(g: GarajeDisponible, elegido: Boolean, precioExacto: B
                 Text("${if (precioExacto) "" else "Desde "}${ars(g.precioDesde)} ${g.precioUnidad}",
                     style = MaterialTheme.typography.titleSmall)
                 Text(
-                    if (lleno) "Sin lugar" else "${g.lugaresLibres} libres",
+                    if (lleno) "Lleno · ver cercanos" else "${g.lugaresLibres} libres",
                     style = MaterialTheme.typography.labelLarge,
                     color = if (lleno) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 )

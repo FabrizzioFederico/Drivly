@@ -52,6 +52,13 @@ interface DrivlyApi {
     @POST("vehiculos/")
     suspend fun agregarVehiculo(@Body pedido: PedidoVehiculo): Vehiculo
 
+    /** Vuelve a consultar DataCar. */
+    @POST("vehiculos/{id}/revalidar/")
+    suspend fun revalidarVehiculo(@Path("id") id: String): Vehiculo
+
+    @POST("vehiculos/{id}/declarar/")
+    suspend fun declararCategoria(@Path("id") id: String, @Body pedido: PedidoCategoria): Vehiculo
+
     @GET("garajes/disponibles/")
     suspend fun disponibles(
         @Query("lat") lat: Double,
@@ -105,8 +112,15 @@ interface DrivlyApi {
     @GET("garajes/{id}/ocupacion/")
     suspend fun ocupacion(@Path("id") garajeId: String): Ocupacion
 
+    /** Garajes con lugar cerca de uno lleno. Sin horario: desde ahora y por 2 horas. */
     @GET("garajes/{id}/cercanos/")
-    suspend fun cercanos(@Path("id") garajeId: String): List<GarajeDisponible>
+    suspend fun cercanos(
+        @Path("id") garajeId: String,
+        @Query("inicio") inicio: String? = null,
+        @Query("fin") fin: String? = null,
+        @Query("modalidad") modalidad: String? = null,
+        @Query("vehiculo") vehiculo: String? = null,
+    ): List<GarajeDisponible>
 
     @POST("operacion/ingreso/")
     suspend fun ingreso(@Body pedido: PedidoEscaneo): RespuestaOperacion

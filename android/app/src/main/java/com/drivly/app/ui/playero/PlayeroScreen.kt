@@ -69,6 +69,7 @@ import com.drivly.app.data.api.Reserva
 import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.ui.ars
 import com.drivly.app.ui.components.EstadoChip
+import com.drivly.app.ui.components.ListaCercanos
 import com.drivly.app.ui.hora
 import com.drivly.app.ui.iso
 import com.drivly.app.ui.theme.Action
@@ -278,7 +279,7 @@ class PlayeroViewModel(private val api: DrivlyApi) : ViewModel() {
     }
 }
 
-/** Operación del garaje, igual que ValetPortalView.jsx: semáforo, escaneo, deudas y derivación a cercanos. */
+/** Operación del garaje: semáforo, escaneo, deudas y derivación a cercanos. */
 @Composable
 fun PlayeroScreen(alAbrirPerfil: () -> Unit) {
     val app = LocalContext.current.applicationContext as DrivlyApplication
@@ -346,7 +347,7 @@ private fun AvisoCarga(titulo: String, detalle: String, alReintentar: () -> Unit
     }
 }
 
-/** Una columna en el teléfono y dos en la tablet, como el portal web. */
+/** Una columna en el teléfono y dos en la tablet. */
 @Composable
 private fun Operacion(vm: PlayeroViewModel) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -541,36 +542,8 @@ private fun AlertasOverstay(alertas: List<AlertaOverstay>) {
 private fun Derivar(d: Derivacion, alCerrar: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         d.detalle?.let { AvisoOperacion(Aviso(false, it)) }
-        Column(
-            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.shapes.large).padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(d.titulo, fontWeight = FontWeight.ExtraBold)
-            val cercanos = d.cercanos
-            when {
-                cercanos == null -> Text("Buscando garajes con lugar…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                cercanos.isEmpty() -> Text("No hay garajes Drivly con lugar en 1 km. Probá con otro horario.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> cercanos.forEach { GarajeCercano(it) }
-            }
-        }
+        ListaCercanos(d.titulo, d.cercanos)
         TextButton(onClick = alCerrar, modifier = Modifier.align(Alignment.End)) { Text("Cerrar") }
-    }
-}
-
-@Composable
-private fun GarajeCercano(g: GarajeDisponible) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(g.nombre, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${g.direccion} · a ${g.distanciaM} m", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Column(horizontalAlignment = Alignment.End) {
-            Text("${g.lugaresLibres} libres", color = Action, fontWeight = FontWeight.ExtraBold)
-            Text("desde ${ars(g.precioDesde)} ${g.precioUnidad}", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
 }
 

@@ -1,6 +1,7 @@
 package com.drivly.app.ui.reservar
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,6 +54,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.drivly.app.DrivlyApplication
 import com.drivly.app.data.api.Cotizacion
 import com.drivly.app.data.api.DrivlyApi
+import com.drivly.app.data.api.GarajeDisponible
+import com.drivly.app.data.api.PedidoCategoria
 import com.drivly.app.data.api.PedidoHold
 import com.drivly.app.data.api.PedidoVehiculo
 import com.drivly.app.data.api.Reserva
@@ -59,10 +63,13 @@ import com.drivly.app.data.api.Vehiculo
 import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.ui.ars
 import com.drivly.app.ui.components.EstadoChip
+import com.drivly.app.ui.components.ListaCercanos
 import com.drivly.app.ui.components.Tarjeta
+import com.drivly.app.ui.esAbono
 import com.drivly.app.ui.hora
 import com.drivly.app.ui.instante
 import com.drivly.app.ui.iso
+import com.drivly.app.ui.periodo
 import com.drivly.app.ui.theme.DrivlyTheme
 import com.drivly.app.ui.theme.JetBrainsMono
 import kotlinx.coroutines.delay
@@ -75,6 +82,7 @@ class ReservarViewModel(
     private val inicio: OffsetDateTime,
     private val fin: OffsetDateTime,
     private val vehiculoInicial: String? = null,
+    private val modalidad: String = "HORA",
 ) : ViewModel() {
     var vehiculos by mutableStateOf<List<Vehiculo>>(emptyList())
         private set
@@ -88,6 +96,9 @@ class ReservarViewModel(
     var ocupado by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
+        private set
+    /** Al quedarse sin lugar: garajes cercanos con lugar en ese horario (regla 6). */
+    var cercanos by mutableStateOf<List<GarajeDisponible>?>(null)
         private set
 
     init {
@@ -109,7 +120,7 @@ class ReservarViewModel(
         cotizacion = null
         viewModelScope.launch {
             // Si falla no se bloquea nada: el total aparece igual después de retener
-            cotizacion = runCatching { api.cotizar(garajeId, vehiculoId, inicio.iso(), fin.iso()) }.getOrNull()
+            cotizacion = runCatching { api.cotizar(garajeId, vehiculoId, inicio.iso(), fin.iso(), modalidad) }.getOrNull()
                 ?.takeIf { elegido == vehiculoId }
         }
     }
@@ -118,18 +129,40 @@ class ReservarViewModel(
         val nuevo = api.agregarVehiculo(PedidoVehiculo(patente))
         vehiculos = vehiculos + nuevo
         if (nuevo.validado) elegir(nuevo.id)
-        else error = "No pudimos validar la categoría de ${nuevo.patente}. Declarala desde la web para poder reservar."
+        else error = "No pudimos validar la categoría de ${nuevo.patente}. Reintentá o declarala en la lista de vehículos."
+    }
+
+    fun revalidar(v: Vehiculo) = tarea { actualizar(api.revalidarVehiculo(v.id)) }
+
+    fun declarar(v: Vehiculo, categoria: String) = tarea { actualizar(api.declararCategoria(v.id, PedidoCategoria(categoria))) }
+
+    private fun actualizar(v: Vehiculo) {
+        vehiculos = vehiculos.map { if (it.id == v.id) v else it }
+        if (v.validado) elegir(v.id)
+        else error = "Seguimos sin poder validar ${v.patente}."
     }
 
     /** CU-04: retiene el lugar 5 minutos mientras el conductor paga. */
     fun retener() = tarea {
-        reserva = api.crearHold(PedidoHold(garajeId, elegido!!, inicio.iso(), fin.iso()))
+        reserva = api.crearHold(PedidoHold(garajeId, elegido!!, inicio.iso(), fin.iso(), modalidad))
     }
 
     /** Devuelve el init_point de Mercado Pago (canal "app": vuelve por deep link). */
     fun pagar(abrir: (String) -> Unit) = tarea {
         val respuesta = api.pagar(reserva!!.id)
         respuesta.initPoint?.let(abrir) ?: run { reserva = api.reserva(reserva!!.id) } // pagos simulados: ya confirmada
+    }
+
+    /**
+     * Al volver atrás se libera el lugar. Se consulta antes: pudo haber pagado en Mercado Pago y
+     * cancelar acá anularía una reserva ya confirmada.
+     */
+    fun soltarLugar(alTerminar: () -> Unit) {
+        val id = reserva?.id ?: return alTerminar()
+        viewModelScope.launch {
+            runCatching { if (api.reserva(id).estado == "HOLD") api.cancelar(id) }
+            alTerminar()
+        }
     }
 
     fun holdVencido() {
@@ -140,11 +173,14 @@ class ReservarViewModel(
     private fun tarea(bloque: suspend () -> Unit) {
         ocupado = true
         error = null
+        cercanos = null
         viewModelScope.launch {
             try {
                 bloque()
             } catch (e: Exception) {
-                error = e.comoErrorDrivly().message
+                val causa = e.comoErrorDrivly()
+                error = causa.message
+                cercanos = causa.cercanos
             } finally {
                 ocupado = false
             }
@@ -161,13 +197,18 @@ fun ReservarScreen(
     inicio: OffsetDateTime,
     fin: OffsetDateTime,
     vehiculoId: String?,
+    modalidad: String,
     alVolver: () -> Unit,
     alConfirmarSinPago: (String) -> Unit,
+    alCambiarGaraje: (GarajeDisponible) -> Unit,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as DrivlyApplication
-    val vm: ReservarViewModel = viewModel { ReservarViewModel(app.api, garajeId, inicio, fin, vehiculoId) }
+    val vm: ReservarViewModel = viewModel { ReservarViewModel(app.api, garajeId, inicio, fin, vehiculoId, modalidad) }
     val reserva = vm.reserva
+    val volver = { vm.soltarLugar(alVolver) }
+
+    BackHandler(enabled = reserva != null, onBack = volver)
 
     // Con pagos simulados la reserva vuelve confirmada sin pasar por Mercado Pago
     LaunchedEffect(reserva?.estado) { if (reserva?.estado == "CONFIRMADA") alConfirmarSinPago(reserva.id) }
@@ -177,7 +218,7 @@ fun ReservarScreen(
             TopAppBar(
                 title = { Text(nombre) },
                 navigationIcon = {
-                    IconButton(onClick = alVolver) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") }
+                    IconButton(onClick = volver) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") }
                 },
             )
         },
@@ -187,7 +228,15 @@ fun ReservarScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(direccion, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("De ${hora(inicio.toString())} a ${hora(fin.toString())}", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (esAbono(modalidad)) periodo(modalidad, inicio.toString(), fin.toString())
+                else "De ${hora(inicio.toString())} a ${hora(fin.toString())}",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (esAbono(modalidad)) {
+                Text("Cochera móvil: tenés lugar asegurado, sin un número de cochera fijo.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
 
             if (reserva == null) {
                 SeccionVehiculos(vm)
@@ -216,6 +265,7 @@ fun ReservarScreen(
                 Text(it, color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             }
+            vm.cercanos?.let { ListaCercanos("Garajes cercanos con lugar en ese horario", it, alElegir = alCambiarGaraje) }
         }
     }
 }
@@ -241,6 +291,7 @@ private fun SeccionVehiculos(vm: ReservarViewModel) {
                     Text(v.categoria ?: "Sin categoría", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                if (!v.validado) SinValidar(v, vm)
             }
             HorizontalDivider()
             OutlinedTextField(
@@ -260,6 +311,20 @@ private fun SeccionVehiculos(vm: ReservarViewModel) {
             ) { Text("Agregar vehículo") }
             Text("La categoría y la tarifa salen del registro oficial de la patente.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Regla 3: si DataCar no resolvió la categoría se reintenta, o el conductor la declara y el playero la verifica. */
+@Composable
+private fun SinValidar(v: Vehiculo, vm: ReservarViewModel) {
+    Text(if (v.rechazado) "No figura en el registro oficial." else "Todavía no pudimos validarlo con el registro oficial.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        TextButton(onClick = { vm.revalidar(v) }, enabled = !vm.ocupado) { Text("Reintentar") }
+        if (v.puedeDeclarar) {
+            TextButton(onClick = { vm.declarar(v, "AUTO") }, enabled = !vm.ocupado) { Text("Es auto") }
+            TextButton(onClick = { vm.declarar(v, "CAMIONETA") }, enabled = !vm.ocupado) { Text("Es camioneta") }
         }
     }
 }

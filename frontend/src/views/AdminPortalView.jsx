@@ -545,7 +545,7 @@ function EquipoPanel({ garajeId }) {
       await garajesService.addPlayero(garajeId, form);
       setForm({ email: '', nombre: '' });
       await load();
-      setMsg({ ok: true, text: 'Playero agregado. Puede iniciar sesión con Google usando ese email.' });
+      setMsg({ ok: true, text: 'Playero agregado. Entra desde la app de Drivly con Google, usando ese email.' });
     } catch (err) {
       setMsg({ ok: false, text: err.fields?.email?.[0] ?? err.message });
     } finally { setAdding(false); }

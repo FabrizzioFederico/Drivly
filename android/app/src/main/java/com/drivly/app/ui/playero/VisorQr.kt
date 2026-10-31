@@ -53,7 +53,7 @@ import java.util.concurrent.Executors
 
 private enum class EstadoCamara { LISTA, SIN_PERMISO, NO_DISPONIBLE }
 
-/** Visor de cámara. Si no hay permiso o cámara, el playero usa el ingreso manual, igual que en la web. */
+/** Visor de cámara. Si no hay permiso o cámara, el playero usa el ingreso manual. */
 @Composable
 fun VisorQr(activo: Boolean, alEscanear: (String) -> Unit, modifier: Modifier = Modifier) {
     val contexto = LocalContext.current

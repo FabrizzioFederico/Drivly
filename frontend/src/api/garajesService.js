@@ -17,25 +17,6 @@ export const garajesService = {
   },
 
   /**
-   * GET /garajes/disponibles/?lat=&lng=&radio=&inicio=&fin=&modalidad=HORA|SEMANAL|MENSUAL|ANUAL
-   * -> [{ id, nombre, direccion, lat, lng, distancia_m, lugares_libres, precio_desde, precio_unidad, techado, abierto_24h }]
-   * Sólo devuelve garajes que ofrecen la modalidad pedida.
-   */
-  async disponibles(params) {
-    if (USE_MOCKS) return mocks.garajesDisponibles(params);
-    return lista((await client.get('/garajes/disponibles/', { params })).data);
-  },
-
-  /**
-   * GET /garajes/{id}/cercanos/?inicio=&fin=&modalidad=  (regla 6)
-   * Garajes con lugar cerca de uno que está lleno, ordenados por distancia. Misma forma que disponibles().
-   */
-  async cercanos(id, params = {}) {
-    if (USE_MOCKS) return mocks.cercanos(id, params);
-    return lista((await client.get(`/garajes/${id}/cercanos/`, { params })).data);
-  },
-
-  /**
    * GET /garajes/{id}/tarifas/
    * -> [{ categoria, modalidad, precio_fraccion, fraccion_min, minimo_fracciones, precio_periodo }]
    * HORA usa fracciones; SEMANAL / MENSUAL / ANUAL usan precio_periodo.

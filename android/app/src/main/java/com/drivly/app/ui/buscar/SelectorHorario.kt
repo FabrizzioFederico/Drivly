@@ -45,10 +45,13 @@ import java.util.Locale
 
 private val DIA = DateTimeFormatter.ofPattern("EEE d MMM", Locale.forLanguageTag("es-AR"))
 private val HORA = DateTimeFormatter.ofPattern("HH:mm")
+private val FECHA_FIN = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.forLanguageTag("es-AR"))
 private val DURACIONES = listOf(1, 2, 3, 6)
+private val MODALIDADES = listOf("HORA" to "Por hora", "SEMANAL" to "Semanal", "MENSUAL" to "Mensual", "ANUAL" to "Anual")
 
 /**
- * Cuándo y cuánto tiempo: fecha (DatePicker), hora de llegada (TimePicker) y duración (botones segmentados).
+ * Cuándo y cuánto tiempo: modalidad, fecha (DatePicker), hora de llegada (TimePicker) y duración (botones
+ * segmentados). En un abono no se elige la duración: sale de la modalidad.
  * Nunca deja elegir un inicio en el pasado: el backend lo rechazaría.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +61,20 @@ fun SelectorHorario(horario: Horario, alCambiar: (Horario) -> Unit, modifier: Mo
     val local = horario.inicio.atZoneSameInstant(ZoneId.systemDefault())
     val hoy = LocalDate.now()
 
+    val finLocal = horario.fin.atZoneSameInstant(ZoneId.systemDefault())
+    val porHora = horario.modalidad == "HORA"
+
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            MODALIDADES.forEachIndexed { i, (id, etiqueta) ->
+                SegmentedButton(
+                    selected = horario.modalidad == id,
+                    onClick = { alCambiar(horario.copy(modalidad = id)) },
+                    shape = SegmentedButtonDefaults.itemShape(i, MODALIDADES.size),
+                    icon = {},
+                ) { Text(etiqueta, style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AssistChip(
                 onClick = { dialogo = "fecha" },
@@ -67,18 +83,23 @@ fun SelectorHorario(horario: Horario, alCambiar: (Horario) -> Unit, modifier: Mo
             )
             AssistChip(
                 onClick = { dialogo = "hora" },
-                label = { Text("Llego ${local.format(HORA)} · salgo ${horario.fin.atZoneSameInstant(ZoneId.systemDefault()).format(HORA)}") },
+                label = { Text(if (porHora) "Llego ${local.format(HORA)} · salgo ${finLocal.format(HORA)}" else "Hasta el ${finLocal.format(FECHA_FIN)}") },
                 leadingIcon = { Icon(Icons.Outlined.Schedule, null, Modifier.size(AssistChipDefaults.IconSize)) },
             )
         }
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            DURACIONES.forEachIndexed { i, h ->
-                SegmentedButton(
-                    selected = horario.horas == h,
-                    onClick = { alCambiar(horario.copy(horas = h)) },
-                    shape = SegmentedButtonDefaults.itemShape(i, DURACIONES.size),
-                ) { Text("$h h") }
+        if (porHora) {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                DURACIONES.forEachIndexed { i, h ->
+                    SegmentedButton(
+                        selected = horario.horas == h,
+                        onClick = { alCambiar(horario.copy(horas = h)) },
+                        shape = SegmentedButtonDefaults.itemShape(i, DURACIONES.size),
+                    ) { Text("$h h") }
+                }
             }
+        } else {
+            Text("Cochera móvil: tenés lugar asegurado, sin un número de cochera fijo.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
@@ -127,6 +148,6 @@ fun SelectorHorario(horario: Horario, alCambiar: (Horario) -> Unit, modifier: Mo
 /** Arma el nuevo inicio; si quedó en el pasado vuelve a "ahora" (redondeado al cuarto de hora). */
 private fun conInicio(horario: Horario, fecha: LocalDate, hora: LocalTime): Horario {
     val inicio = fecha.atTime(hora).atZone(ZoneId.systemDefault()).toOffsetDateTime().truncatedTo(ChronoUnit.MINUTES)
-    return if (inicio.isBefore(OffsetDateTime.now().minusMinutes(1))) Horario.desdeAhora(horario.horas)
+    return if (inicio.isBefore(OffsetDateTime.now().minusMinutes(1))) Horario.desdeAhora(horario.horas).copy(modalidad = horario.modalidad)
     else horario.copy(inicio = inicio)
 }

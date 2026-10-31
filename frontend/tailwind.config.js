@@ -23,10 +23,6 @@ export default {
       boxShadow: { card: '0px 4px 12px rgba(0,0,0,0.06)' },
       minHeight: { touch: '48px' },
       minWidth: { touch: '48px' },
-      keyframes: {
-        scan: { from: { top: '14%' }, to: { top: '84%' } },
-      },
-      animation: { scan: 'scan 2.2s ease-in-out infinite alternate' },
     },
   },
   plugins: [],

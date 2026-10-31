@@ -13,9 +13,6 @@ export function formatPatente(raw = '') {
   return p;
 }
 
-export const isPatenteValida = (raw = '') =>
-  /^([A-Z]{2}\d{3}[A-Z]{2}|[A-Z]\d{3}[A-Z]{3}|[A-Z]{3}\d{3})$/.test(raw.replace(/[\s-]/g, '').toUpperCase());
-
 const SIZES = {
   sm: 'text-sm px-2 py-0.5 border-[1.5px] rounded-md',
   md: 'text-lg px-2.5 py-1 border-2 rounded-lg',

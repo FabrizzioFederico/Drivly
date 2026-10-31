@@ -14,7 +14,6 @@
   .btn-action { @apply btn bg-action text-ink hover:bg-action-hover; }
   .btn-primary { @apply btn bg-brand text-white hover:bg-brand-deep; }
   .btn-outline { @apply btn border-[1.5px] border-ink-line bg-white text-ink hover:border-brand hover:text-brand; }
-  .btn-ghost-dark { @apply btn border-[1.5px] border-ink-700 bg-transparent text-white hover:bg-ink-800; }
   .field { @apply w-full min-h-touch rounded-card border-[1.5px] border-ink-line bg-white px-4 text-base font-semibold outline-none focus:border-brand focus:border-2; }
   .label { @apply text-xs font-bold uppercase tracking-wider text-ink-muted; }
 }

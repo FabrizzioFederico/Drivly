@@ -1,7 +1,7 @@
-# App Android del conductor — contrato con el backend
+# App Android — contrato con el backend
 
-La app Kotlin (carpeta `android/`, a crear) usa la misma API que la vista web del conductor
-(`frontend/src/views/DriverAppView.jsx`), que queda como referencia y para pruebas.
+La app Kotlin (carpeta `android/`) es el único cliente de conductores y playeros.
+La web (`frontend/`) es sólo el portal de los administradores.
 
 ## Configuración local
 
@@ -44,6 +44,7 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 |---|---|---|
 | GET/POST | `vehiculos/` | Listar / registrar patente (la categoría sale de DataCar, no se elige) |
 | POST | `vehiculos/{id}/declarar/` | `{ "categoria": "AUTO" \| "CAMIONETA" }` si DataCar no respondió |
+| POST | `vehiculos/{id}/revalidar/` | Vuelve a consultar DataCar |
 | GET | `garajes/disponibles/?lat&lng&radio&inicio&fin&modalidad` | Búsqueda (sólo garajes que pueden cobrar) |
 | GET | `garajes/{id}/cercanos/?inicio&fin&modalidad` | Alternativas si el garaje está lleno |
 | GET | `reservas/cotizar/?garaje&vehiculo&modalidad&inicio&fin` | Precio estimado sin retener el lugar (`total`, `fracciones`, `precio_fraccion`) |
@@ -58,7 +59,7 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 
 ## Endpoints del playero
 
-Con rol `PLAYERO` la app abre `ui/playero/PlayeroScreen.kt`, el equivalente de `ValetPortalView.jsx`.
+Con rol `PLAYERO` la app abre `ui/playero/PlayeroScreen.kt`.
 
 | Método | Ruta | Uso |
 |---|---|---|
@@ -97,7 +98,7 @@ la app decide qué mostrar según `code`.
    ```
 4. **No confiar en los parámetros del deep link.** Con `collection_status=approved`, consultar
    `GET reservas/{external_reference}/` cada 2 s (hasta ~30 s) hasta que el estado sea `CONFIRMADA`:
-   lo confirma el webhook en el servidor. Mismo criterio que `DriverAppView.jsx`.
+   lo confirma el webhook en el servidor.
 5. Si el conductor cierra la Custom Tab sin pagar no llega ningún deep link: al volver a la app, consultar la reserva.
 
 El scheme se cambia con `APP_DEEPLINK_PAGO` en el `.env` del backend (default `drivly://pago-resultado`).

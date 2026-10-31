@@ -61,8 +61,10 @@ import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.data.json
 import com.drivly.app.ui.ars
 import com.drivly.app.ui.components.EstadoChip
-import com.drivly.app.ui.fechaHora
+import com.drivly.app.ui.esAbono
+import com.drivly.app.ui.fecha
 import com.drivly.app.ui.hora
+import com.drivly.app.ui.periodo
 import com.drivly.app.ui.theme.JetBrainsMono
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -104,7 +106,7 @@ fun TicketScreen(reservaId: String, alVolver: (mensaje: String?) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mi ticket") },
+                title = { Text(if (r != null && esAbono(r.modalidad)) "Mi abono" else "Mi ticket") },
                 navigationIcon = {
                     IconButton(onClick = { alVolver(null) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
@@ -135,7 +137,10 @@ fun TicketScreen(reservaId: String, alVolver: (mensaje: String?) -> Unit) {
                         Box(Modifier.background(androidx.compose.ui.graphics.Color.White).padding(12.dp)) {
                             Image(imagen.asImageBitmap(), contentDescription = "Código QR de la reserva", Modifier.size(240.dp))
                         }
-                        Text("Funciona sin señal. Mostralo al entrar y al salir.", style = MaterialTheme.typography.bodyMedium,
+                        Text(
+                            if (r != null && esAbono(r.modalidad)) "Mostralo en cada ingreso y egreso hasta el ${fecha(r.fin)}."
+                            else "Funciona sin señal. Mostralo al entrar y al salir.",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else if (error == null) {
                         CircularProgressIndicator()
@@ -148,7 +153,7 @@ fun TicketScreen(reservaId: String, alVolver: (mensaje: String?) -> Unit) {
                 Tarjeta(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(r.patente, style = MaterialTheme.typography.headlineSmall.copy(fontFamily = JetBrainsMono))
-                        Text("${fechaHora(r.inicio)} a ${hora(r.fin)}", style = MaterialTheme.typography.titleMedium)
+                        Text(periodo(r.modalidad, r.inicio, r.fin), style = MaterialTheme.typography.titleMedium)
                         r.garaje?.let {
                             Text(it.nombre, style = MaterialTheme.typography.titleMedium)
                             Text(it.direccion, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -250,7 +255,7 @@ private fun comoLlegar(context: Context, g: GarajeResumen) {
 }
 
 private fun compartir(context: Context, r: Reserva, g: GarajeResumen) {
-    val texto = "Mi reserva en Drivly: ${g.nombre} (${g.direccion}), ${fechaHora(r.inicio)} a ${hora(r.fin)}. " +
+    val texto = "Mi reserva en Drivly: ${g.nombre} (${g.direccion}), ${periodo(r.modalidad, r.inicio, r.fin)}. " +
         "https://www.google.com/maps/search/?api=1&query=${g.lat},${g.lng}"
     val envio = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
