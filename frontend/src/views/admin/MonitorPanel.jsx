@@ -6,13 +6,22 @@ import { garajesService } from '../../api/garajesService';
 import { reservasService } from '../../api/reservasService';
 import StatusBadge from '../../components/StatusBadge';
 import VehiclePlateBadge, { formatPatente } from '../../components/VehiclePlateBadge';
-import { ars, downloadCsv, hora } from '../../lib/format';
+import { descargarExcel } from '../../lib/excel';
+import { ars, CATEGORIA_LABEL, hora } from '../../lib/format';
 import { MONO } from '../../theme';
 import { Encabezado, Leyenda, Seccion } from './comun';
 
 const FILTROS = ['TODOS', 'HOLD', 'CONFIRMADA', 'EN_CURSO', 'CON_DEUDA', 'SIN_LUGAR'];
 const COLUMNAS = ['ID reserva', 'Patente', 'Categoría', 'Tipo', 'Horario', 'Estado', 'Importe'];
 const ALTO_GRAFICO = 220;
+
+// Para el Excel: los mismos nombres que el backend (reservas/models.py)
+const ORIGEN_LABEL = { APP: 'App', PRESENCIAL: 'Presencial' };
+const MODALIDAD_LABEL = { HORA: 'Por hora', SEMANAL: 'Abono semanal', MENSUAL: 'Abono mensual', ANUAL: 'Abono anual', PRESENCIAL: 'Cliente sin reserva' };
+const ESTADO_LABEL = {
+  HOLD: 'Retenida (esperando pago)', CONFIRMADA: 'Confirmada', EN_CURSO: 'En curso', FINALIZADA: 'Finalizada', CON_DEUDA: 'Con deuda',
+  EXPIRADA: 'Expirada', CANCELADA: 'Cancelada', NO_SHOW: 'No se presentó', SIN_LUGAR: 'Sin lugar físico',
+};
 
 const tipo = (r) => (r.origen !== 'APP' ? 'Sin reserva' : r.modalidad && r.modalidad !== 'HORA' ? `Abono ${r.modalidad.toLowerCase()}` : 'App');
 const horario = (r) => (r.modalidad && !['HORA', 'PRESENCIAL'].includes(r.modalidad) ? `hasta ${new Date(r.fin).toLocaleDateString('es-AR')}` : `${hora(r.inicio)}–${hora(r.fin)}`);
@@ -78,16 +87,16 @@ export default function MonitorPanel({ garajeId }) {
   const filtradas = filtro === 'TODOS' ? reservas : reservas.filter((r) => r.estado === filtro);
   const alertas = ocupacion?.alertas_overstay ?? [];
 
-  const exportar = () => downloadCsv(`drivly-reservas-${filtro.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, filtradas, [
-    { label: 'ID', value: (r) => r.id },
-    { label: 'Patente', value: (r) => formatPatente(r.patente) },
-    { label: 'Categoría', value: (r) => r.categoria },
-    { label: 'Origen', value: (r) => r.origen },
-    { label: 'Modalidad', value: (r) => r.modalidad },
-    { label: 'Inicio', value: (r) => r.inicio },
-    { label: 'Fin', value: (r) => r.fin },
-    { label: 'Estado', value: (r) => r.estado },
-    { label: 'Importe', value: (r) => r.total },
+  const exportar = () => descargarExcel(`drivly-reservas-${filtro.toLowerCase()}-${new Date().toLocaleDateString('en-CA')}.xlsx`, 'Reservas', filtradas, [
+    { label: 'ID', value: (r) => String(r.id).slice(0, 8), ancho: 12 },
+    { label: 'Patente', value: (r) => r.patente, ancho: 12 },
+    { label: 'Categoría', value: (r) => CATEGORIA_LABEL[r.categoria] ?? r.categoria, ancho: 13 },
+    { label: 'Origen', value: (r) => ORIGEN_LABEL[r.origen] ?? r.origen, ancho: 12 },
+    { label: 'Modalidad', value: (r) => MODALIDAD_LABEL[r.modalidad] ?? r.modalidad, ancho: 20 },
+    { label: 'Inicio', value: (r) => r.inicio, tipo: 'fecha', ancho: 18 },
+    { label: 'Fin', value: (r) => r.fin, tipo: 'fecha', ancho: 18 },
+    { label: 'Estado', value: (r) => ESTADO_LABEL[r.estado] ?? r.estado, ancho: 26 },
+    { label: 'Importe', value: (r) => r.total, tipo: 'importe', ancho: 16 },
   ]);
 
   return (
@@ -126,7 +135,7 @@ export default function MonitorPanel({ garajeId }) {
                 color={filtro === f ? 'primary' : 'default'} variant={filtro === f ? 'filled' : 'outlined'} sx={{ fontWeight: 700 }} />
             ))}
           </Stack>
-          <Button variant="outlined" onClick={exportar} disabled={!filtradas.length}>Exportar CSV</Button>
+          <Button variant="outlined" onClick={exportar} disabled={!filtradas.length}>Exportar Excel</Button>
         </Stack>
         <TableContainer>
           <Table sx={{ minWidth: 820 }}>
