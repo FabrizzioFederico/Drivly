@@ -1,3 +1,6 @@
+import { Box } from '@mui/material';
+import { MONO } from '../theme';
+
 /**
  * Formatea patentes argentinas:
  *  Mercosur auto  AA123BB -> AA 123 BB
@@ -13,19 +16,17 @@ export function formatPatente(raw = '') {
   return p;
 }
 
-const SIZES = {
-  sm: 'text-sm px-2 py-0.5 border-[1.5px] rounded-md',
-  md: 'text-lg px-2.5 py-1 border-2 rounded-lg',
-  lg: 'text-2xl px-3 py-1 border-2 rounded-lg',
-};
-
-export default function VehiclePlateBadge({ patente, size = 'md', dark = false, className = '' }) {
+export default function VehiclePlateBadge({ patente, sinBorde = false }) {
   return (
-    <span
-      className={`inline-block shrink-0 whitespace-nowrap font-mono font-bold tracking-[0.06em] ${SIZES[size]} ${dark ? 'border-white text-white' : 'border-ink text-ink'} ${className}`}
+    <Box
+      component="span"
       aria-label={`Patente ${patente}`}
+      sx={{
+        display: 'inline-block', flexShrink: 0, whiteSpace: 'nowrap', fontFamily: MONO, fontSize: 14, fontWeight: 700, letterSpacing: '0.06em',
+        ...(sinBorde ? {} : { px: 1, py: 0.25, border: '1.5px solid', borderColor: 'text.primary', borderRadius: 1.5 }),
+      }}
     >
       {formatPatente(patente)}
-    </span>
+    </Box>
   );
 }

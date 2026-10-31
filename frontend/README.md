@@ -1,7 +1,9 @@
-# Drivly Web (React + Vite + Tailwind)
+# Drivly Web (React + Vite + Material UI)
 
 Portal de los administradores de garajes, conectado a la API REST de Django (DRF) con JWT.
 Conductores y playeros usan la app Android (carpeta `android/`): acá no pueden iniciar sesión.
+
+La interfaz usa Material Design con [MUI](https://mui.com/material-ui/). El tema oscuro y todos los colores están en `src/theme.js`, publicados como variables CSS (`var(--surface-2)`, `var(--accent)`, etc.), y cada sección del portal en `src/views/admin/`. No escribir colores sueltos en los componentes. MUI 9 ignora las system props en los componentes: los colores de texto van en `sx`, por ejemplo `sx={{ color: 'text.secondary' }}`.
 
 ## Inicio rápido
 

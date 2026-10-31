@@ -1,719 +1,55 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import {
+  AppBar, Avatar, Box, Card, CardContent, Chip, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon,
+  ListItemText, Menu, MenuItem, Skeleton, Toolbar, Tooltip, Typography, useMediaQuery,
+} from '@mui/material';
+import { useTheme } from '@mui/material/styles';
+import AccountBalanceWalletOutlined from '@mui/icons-material/AccountBalanceWalletOutlined';
+import BarChartOutlined from '@mui/icons-material/BarChartOutlined';
+import GroupsOutlined from '@mui/icons-material/GroupsOutlined';
+import LocalParkingOutlined from '@mui/icons-material/LocalParkingOutlined';
+import MenuIcon from '@mui/icons-material/Menu';
+import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined';
+import TuneOutlined from '@mui/icons-material/TuneOutlined';
+import { authService } from '../api/authService';
+import { USE_MOCKS } from '../api/client';
 import { garajesService } from '../api/garajesService';
-import { operacionService } from '../api/operacionService';
-import { pagosService } from '../api/pagosService';
-import { reservasService } from '../api/reservasService';
-import StatusBadge from '../components/StatusBadge';
-import VehiclePlateBadge, { formatPatente } from '../components/VehiclePlateBadge';
-import { ars, downloadCsv, hora, CATEGORIA_LABEL } from '../lib/format';
+import CobrosPanel from './admin/CobrosPanel';
+import DeudasPanel from './admin/DeudasPanel';
+import EquipoPanel from './admin/EquipoPanel';
+import GarajePanel from './admin/GarajePanel';
+import MonitorPanel from './admin/MonitorPanel';
+import TarifasPanel from './admin/TarifasPanel';
+
+const ANCHO_MENU = 272;
+const ANCHO_ICONOS = 72;
 
 const NAV = [
-  { id: 'garaje', label: 'Mi Garaje' },
-  { id: 'tarifas', label: 'Capacidad y Tarifas' },
-  { id: 'equipo', label: 'Equipo (Playeros)' },
-  { id: 'cobros', label: 'Cobros (Mercado Pago)' },
-  { id: 'deudas', label: 'Deudas' },
-  { id: 'reportes', label: 'Reportes y Caja' },
+  { id: 'garaje', label: 'Mi Garaje', Icono: LocalParkingOutlined },
+  { id: 'tarifas', label: 'Capacidad y Tarifas', Icono: TuneOutlined },
+  { id: 'equipo', label: 'Equipo (Playeros)', Icono: GroupsOutlined },
+  { id: 'cobros', label: 'Cobros (Mercado Pago)', Icono: AccountBalanceWalletOutlined },
+  { id: 'deudas', label: 'Deudas', Icono: ReceiptLongOutlined },
+  { id: 'reportes', label: 'Reportes y Caja', Icono: BarChartOutlined },
 ];
-const FILTROS = ['TODOS', 'HOLD', 'CONFIRMADA', 'EN_CURSO', 'CON_DEUDA', 'SIN_LUGAR'];
-const STRIPES = 'repeating-linear-gradient(135deg,#7A8496 0 3px,#C9CFD8 3px 6px)';
 
-function Kpis({ m }) {
-  if (m === null) return <div className="grid grid-cols-3 gap-4">{[0, 1, 2].map((i) => <div key={i} className="card h-[110px] animate-pulse" />)}</div>;
-  if (m.ocupacion_pico === undefined) return null;
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-      <div className="card flex flex-col gap-1.5 px-5 py-4">
-        <span className="text-[13px] font-semibold text-ink-muted">Ocupación pico del día</span>
-        <div className="flex items-baseline gap-2.5"><span className="text-[34px] font-extrabold tracking-tight">{Math.round(m.ocupacion_pico * 100)}%</span><span className="text-[13px] text-ink-muted">{m.ocupacion_pico_lugares} lugares · {m.ocupacion_pico_hora}</span></div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-ink-soft"><div className={`h-full ${m.ocupacion_pico >= 0.9 ? 'bg-hold' : 'bg-success'}`} style={{ width: `${m.ocupacion_pico * 100}%` }} /></div>
-      </div>
-      <div className="card flex flex-col gap-1.5 px-5 py-4">
-        <span className="text-[13px] font-semibold text-ink-muted">Reservas confirmadas hoy</span>
-        <div className="flex items-baseline gap-2.5"><span className="text-[34px] font-extrabold tracking-tight">{m.reservas_confirmadas}</span><span className="text-[13px] font-bold text-success-ink">{m.reservas_variacion >= 0 ? '+' : ''}{m.reservas_variacion} vs. semana anterior</span></div>
-        <span className="text-[13px] text-ink-muted">{m.en_hold} en HOLD ahora · {m.canceladas} canceladas</span>
-      </div>
-      <div className="card flex flex-col gap-1.5 px-5 py-4">
-        <span className="text-[13px] font-semibold text-ink-muted">Recaudación total</span>
-        <span className="text-[34px] font-extrabold tracking-tight">{ars(m.recaudacion_total)}</span>
-        <span className="text-[13px] text-ink-muted">App {ars(m.recaudacion_app)} · Presencial {ars(m.recaudacion_presencial)} · Excedentes {ars(m.recaudacion_excedentes)}</span>
-        {(m.deuda_pendiente > 0 || m.deuda_incobrable > 0) && <span className="text-[13px] font-bold text-debt-ink">Por cobrar {ars(m.deuda_pendiente)} · Incobrable {ars(m.deuda_incobrable)}</span>}
-      </div>
-    </div>
-  );
-}
-
-function Stepper({ value, onChange, min = 0, max }) {
-  return (
-    <div className="flex items-center overflow-hidden rounded-card border-[1.5px] border-ink-line">
-      <button onClick={() => onChange(Math.max(min, value - 1))} className="h-11 w-11 bg-[#F4F6F8] text-xl font-bold" aria-label="Restar">−</button>
-      <input value={value} onChange={(e) => { const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) onChange(Math.min(max, Math.max(min, n))); }}
-        className="w-14 text-center font-mono text-[17px] font-bold outline-none" inputMode="numeric" />
-      <button onClick={() => onChange(Math.min(max, value + 1))} className="h-11 w-11 bg-[#F4F6F8] text-xl font-bold" aria-label="Sumar">+</button>
-    </div>
-  );
-}
-
-/* ---------- C1 · Capacidad y Tarifas (CU-06) ---------- */
-const CATEGORIAS = ['AUTO', 'MOTO', 'CAMIONETA'];
-const ABONOS = ['SEMANAL', 'MENSUAL', 'ANUAL'];
-const MINIMOS = [15, 30, 60, 120]; // minutos mínimos cobrados = minimo_fracciones × 15
-const SALIDAS = [60, 90, 120, 180, 240];
-const minLabel = (m) => (m >= 60 ? `${m / 60} h` : `${m} min`);
-
-/** Pasa de las filas del backend a la forma de los formularios. */
-function desdeFilas(filas) {
-  const hora = CATEGORIAS.map((categoria) => {
-    const t = filas.find((f) => f.categoria === categoria && f.modalidad === 'HORA');
-    return { categoria, precio_fraccion: t?.precio_fraccion ?? 0, minimo_min: (t?.minimo_fracciones ?? 1) * (t?.fraccion_min ?? 15) };
-  });
-  const abonos = Object.fromEntries(CATEGORIAS.map((c) => [c, Object.fromEntries(ABONOS.map((m) => {
-    const t = filas.find((f) => f.categoria === c && f.modalidad === m);
-    return [m, t?.precio_periodo ?? ''];
-  }))]));
-  return { hora, abonos };
-}
-
-/** Y de vuelta: una fila por categoría y modalidad. Un abono sin precio deja de ofrecerse. */
-function aFilas({ hora, abonos }) {
-  const filas = hora
-    .filter((h) => Number(h.precio_fraccion) > 0)
-    .map((h) => ({ categoria: h.categoria, modalidad: 'HORA', precio_fraccion: h.precio_fraccion, fraccion_min: 15, minimo_fracciones: h.minimo_min / 15, precio_periodo: null }));
-  CATEGORIAS.forEach((c) => ABONOS.forEach((m) => {
-    const precio = Number(abonos[c][m]);
-    if (precio > 0) filas.push({ categoria: c, modalidad: m, precio_fraccion: null, fraccion_min: null, minimo_fracciones: null, precio_periodo: precio });
-  }));
-  return filas;
-}
-
-function TarifasPanel({ garajeId }) {
-  const [garaje, setGaraje] = useState(null);
-  const [config, setConfig] = useState(null);
-  const [tarifas, setTarifas] = useState(null);
-  const [metricas, setMetricas] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState(null);
-
-  const load = () => Promise.all([garajesService.get(garajeId), garajesService.getTarifas(garajeId)])
-    .then(([g, t]) => {
-      setGaraje(g);
-      setConfig({ capacidad: g.capacidad, cupo_abonos: g.cupo_abonos, salida_estimada_default_min: g.salida_estimada_default_min, tolerancia_min: g.tolerancia_min, recargo_overstay: g.recargo_overstay });
-      setTarifas(desdeFilas(t)); setMsg(null);
-      // Un fallo de las métricas no impide editar capacidad y tarifas
-      garajesService.metricas(garajeId).then(setMetricas).catch(() => setMetricas({}));
-    })
-    .catch((e) => setMsg({ ok: false, text: e.message }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [garajeId]);
-
-  const set = (k, v) => setConfig((c) => ({ ...c, [k]: v, ...(k === 'capacidad' && c.cupo_abonos > v ? { cupo_abonos: v } : {}) }));
-  const setHora = (i, k, v) => setTarifas((t) => ({ ...t, hora: t.hora.map((row, j) => (j === i ? { ...row, [k]: v } : row)) }));
-  const setAbono = (c, m, v) => setTarifas((t) => ({ ...t, abonos: { ...t.abonos, [c]: { ...t.abonos[c], [m]: v } } }));
-
-  const guardar = async () => {
-    setSaving(true); setMsg(null);
-    try {
-      await Promise.all([garajesService.updateConfiguracion(garajeId, config), garajesService.updateTarifas(garajeId, aFilas(tarifas))]);
-      setMsg({ ok: true, text: 'Cambios guardados. Aplican a reservas nuevas.' });
-    } catch (e) { setMsg({ ok: false, text: e.message }); } finally { setSaving(false); }
-  };
-
-  if (!config || !tarifas) {
-    return msg ? <div role="alert" className="rounded-card bg-debt-soft px-4 py-3 text-sm font-semibold text-debt-ink">{msg.text}</div>
-      : <div className="card h-64 animate-pulse" />;
-  }
-
-  const auto = tarifas.hora.find((t) => t.categoria === 'AUTO');
-  const pctAbonos = (config.cupo_abonos / (config.capacidad || 1)) * 100;
-  const recargoPct = Math.round(config.recargo_overstay * 100);
-
-  return (
-    <>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div><h1 className="text-[26px] font-extrabold tracking-tight">Capacidad y Tarifas</h1><p className="text-[13px] text-ink-muted">{garaje?.direccion}</p></div>
-        <div className="flex gap-2.5">
-          <button onClick={load} className="btn-outline">Descartar</button>
-          <button onClick={guardar} disabled={saving || config.cupo_abonos > config.capacidad} className="btn-action">{saving ? 'Guardando…' : 'Guardar cambios'}</button>
-        </div>
-      </div>
-      {msg && <div role="alert" className={`rounded-card px-4 py-3 text-sm font-semibold ${msg.ok ? 'bg-success-soft text-success-ink' : 'bg-debt-soft text-debt-ink'}`}>{msg.text}</div>}
-      <Kpis m={metricas} />
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.55fr)]">
-        <section className="card flex flex-col gap-4 p-[22px]">
-          <div>
-            <h2 className="text-[17px] font-extrabold">Capacidad</h2>
-            <p className="text-[13px] text-ink-muted">Una sola capacidad para todos: conductores de la app, abonados y clientes sin reserva.</p>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div><p className="text-sm font-bold">Lugares en Drivly</p><p className="text-xs text-ink-muted">Pueden ser menos que los físicos</p></div>
-            <Stepper value={config.capacidad} min={1} max={2000} onChange={(v) => set('capacidad', v)} />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div><p className="text-sm font-bold">Máximo para abonos</p><p className="text-xs text-ink-muted">Semanales, mensuales y anuales, sin lugar fijo</p></div>
-            <Stepper value={config.cupo_abonos} max={config.capacidad} onChange={(v) => set('cupo_abonos', v)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex h-3.5 gap-0.5 overflow-hidden rounded-full">
-              <div className="bg-brand-deep" style={{ width: `${pctAbonos}%` }} />
-              <div className="flex-1 bg-brand" />
-            </div>
-            <div className="flex flex-wrap gap-x-3.5 text-xs font-semibold text-ink-muted">
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand-deep" />Hasta {config.cupo_abonos} para abonos</span>
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand" />El resto rota entre app y clientes sin reserva</span>
-            </div>
-          </div>
-          <label className="flex items-center justify-between gap-3">
-            <span><span className="block text-sm font-bold">Salida estimada sin reserva</span><span className="block text-xs text-ink-muted">Lo que el semáforo asume si el playero no indica otra</span></span>
-            <select value={config.salida_estimada_default_min} onChange={(e) => set('salida_estimada_default_min', Number(e.target.value))} className="field w-28">
-              {SALIDAS.map((m) => <option key={m} value={m}>{minLabel(m)}</option>)}
-            </select>
-          </label>
-
-          <div className="h-px bg-ink-soft" />
-          <h3 className="text-[15px] font-extrabold">Exceso de permanencia</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1"><span className="text-xs font-bold text-ink-muted">Tolerancia</span>
-              <div className="relative"><input type="number" min="0" value={config.tolerancia_min} onChange={(e) => set('tolerancia_min', Number(e.target.value))} className="field pr-12" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">min</span></div>
-            </label>
-            <label className="flex flex-col gap-1"><span className="text-xs font-bold text-ink-muted">Recargo</span>
-              <div className="relative"><input type="number" min="0" step="5" value={recargoPct} onChange={(e) => set('recargo_overstay', Number(e.target.value) / 100)} className="field pr-9" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">%</span></div>
-            </label>
-          </div>
-          <p className="mt-auto rounded-[10px] bg-[#F4F6F8] px-3 py-2.5 text-xs text-ink-muted">Los cambios aplican a reservas nuevas. Las reservas y abonos vigentes se respetan.</p>
-        </section>
-
-        <div className="flex min-w-0 flex-col gap-4">
-          <section className="card flex flex-col gap-3.5 overflow-x-auto p-[22px]">
-            <div className="flex items-baseline justify-between"><h2 className="text-[17px] font-extrabold">Tarifas por hora</h2><span className="text-xs text-ink-muted">Se cobra por fracción de 15 min</span></div>
-            <table className="w-full min-w-[440px] border-separate border-spacing-x-2.5 border-spacing-y-1.5 text-left">
-              <thead className="text-xs font-bold text-ink-muted"><tr><th>Categoría</th><th>Precio por fracción</th><th>Mínimo cobrado</th></tr></thead>
-              <tbody>
-                {tarifas.hora.map((t, i) => (
-                  <tr key={t.categoria}>
-                    <td className="text-sm font-bold">{CATEGORIA_LABEL[t.categoria]}</td>
-                    <td><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-ink-muted">$</span><input type="number" min="0" value={t.precio_fraccion} onChange={(e) => setHora(i, 'precio_fraccion', Number(e.target.value))} className="field pl-7" /></div></td>
-                    <td><select value={t.minimo_min} onChange={(e) => setHora(i, 'minimo_min', Number(e.target.value))} className="field">{MINIMOS.map((m) => <option key={m} value={m}>{minLabel(m)}</option>)}</select></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-
-          <section className="card flex flex-col gap-3.5 overflow-x-auto p-[22px]">
-            <div><h2 className="text-[17px] font-extrabold">Abonos</h2><p className="text-[13px] text-ink-muted">Precio por período completo. Dejalo vacío si no ofrecés esa opción.</p></div>
-            <table className="w-full min-w-[480px] border-separate border-spacing-x-1.5 border-spacing-y-1.5 text-left">
-              <thead className="text-xs font-bold text-ink-muted"><tr><th>Categoría</th><th>Semanal</th><th>Mensual</th><th>Anual</th></tr></thead>
-              <tbody>
-                {CATEGORIAS.map((c) => (
-                  <tr key={c}>
-                    <td className="text-sm font-bold">{CATEGORIA_LABEL[c]}</td>
-                    {ABONOS.map((m) => (
-                      <td key={m}><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-ink-muted">$</span>
-                        <input type="number" min="0" placeholder="—" title="Vacío: no se ofrece" aria-label={`Abono ${m.toLowerCase()} ${CATEGORIA_LABEL[c]}`} value={tarifas.abonos[c][m]}
-                          onChange={(e) => setAbono(c, m, e.target.value === '' ? '' : Number(e.target.value))} className="field pl-6 pr-2 text-[15px] placeholder:text-ink-subtle" />
-                      </div></td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-
-          {auto && (
-            <div className="flex flex-col gap-1.5 rounded-card bg-ink px-4 py-3.5 font-mono text-[13px] text-white">
-              <span className="font-sans text-xs font-bold text-ink-subtle">Vista previa para el conductor</span>
-              <div className="flex justify-between gap-3"><span>Auto · 3 h = 12 × {ars(auto.precio_fraccion)}</span><span className="font-bold">{ars(12 * auto.precio_fraccion)}</span></div>
-              <div className="flex justify-between gap-3"><span>Overstay 30 min = 2 × {ars(auto.precio_fraccion)} + {recargoPct} %</span><span className="font-bold text-debt-light">{ars(Math.round(2 * auto.precio_fraccion * (1 + config.recargo_overstay)))}</span></div>
-              {tarifas.abonos.AUTO.MENSUAL !== '' && <div className="flex justify-between gap-3"><span>Auto · abono mensual</span><span className="font-bold">{ars(tarifas.abonos.AUTO.MENSUAL)}</span></div>}
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
-/* ---------- C2 · Monitor en vivo y reportes (CU-10) ---------- */
-function MonitorPanel({ garajeId }) {
-  const [ocupacion, setOcupacion] = useState(null);
-  const [reservas, setReservas] = useState([]);
-  const [filtro, setFiltro] = useState('TODOS');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const load = () => garajesService.ocupacion(garajeId).then(setOcupacion).catch(() => {});
-    load();
-    const id = setInterval(load, 15000);
-    return () => clearInterval(id);
-  }, [garajeId]);
-
-  useEffect(() => {
-    setLoading(true);
-    reservasService.list({ garaje: garajeId }).then(setReservas).finally(() => setLoading(false));
-  }, [garajeId]);
-
-  const counts = useMemo(() => FILTROS.reduce((acc, f) => ({ ...acc, [f]: f === 'TODOS' ? reservas.length : reservas.filter((r) => r.estado === f).length }), {}), [reservas]);
-  const filtradas = filtro === 'TODOS' ? reservas : reservas.filter((r) => r.estado === filtro);
-
-  const exportar = () => downloadCsv(`drivly-reservas-${filtro.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, filtradas, [
-    { label: 'ID', value: (r) => r.id },
-    { label: 'Patente', value: (r) => formatPatente(r.patente) },
-    { label: 'Categoría', value: (r) => r.categoria },
-    { label: 'Origen', value: (r) => r.origen },
-    { label: 'Modalidad', value: (r) => r.modalidad },
-    { label: 'Inicio', value: (r) => r.inicio },
-    { label: 'Fin', value: (r) => r.fin },
-    { label: 'Estado', value: (r) => r.estado },
-    { label: 'Importe', value: (r) => r.total },
-  ]);
-
-  const total = ocupacion?.capacidad ?? 80;
-  const umbral = Math.round(total * (ocupacion?.umbral_alerta ?? 0.9));
-  const H = 220;
-  const nowH = new Date().getHours();
-
-  return (
-    <>
-      <div className="flex items-center justify-between">
-        <div><h1 className="text-[26px] font-extrabold tracking-tight">Monitor de ocupación</h1><p className="text-[13px] text-ink-muted">{new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
-        <span className="inline-flex h-9 items-center gap-2 rounded-full bg-success-soft px-3.5 text-[13px] font-extrabold text-success-ink"><span className="h-2 w-2 animate-pulse rounded-full bg-success" />En vivo</span>
-      </div>
-
-      {ocupacion?.alertas_overstay?.length > 0 && (
-        <div role="alert" className="flex flex-col gap-1 rounded-card bg-debt-soft px-4 py-3 text-sm font-semibold text-debt-ink">
-          <span className="font-extrabold">Un vehículo excedido deja sin lugar a {ocupacion.alertas_overstay.length === 1 ? 'una reserva' : `${ocupacion.alertas_overstay.length} reservas`}</span>
-          {ocupacion.alertas_overstay.map((a) => <span key={a.reserva_id}>{formatPatente(a.patente)} · llega a las {hora(a.inicio)}</span>)}
-        </div>
-      )}
-
-      <section className="card flex flex-col gap-3.5 px-6 py-[22px]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-[17px] font-extrabold">Ocupación por franja horaria</h2><p className="text-[13px] text-ink-muted">Real hasta ahora · proyección según reservas confirmadas</p></div>
-          <div className="flex gap-4 text-xs font-semibold text-ink-muted">
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-brand" />App y abonos</span>
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: STRIPES }} />Sin reserva</span>
-            <span className="flex items-center gap-1.5"><span className="w-3.5 border-t-2 border-dashed border-hold" />Alerta {Math.round((ocupacion?.umbral_alerta ?? 0.9) * 100)}%</span>
-          </div>
-        </div>
-        <div className="relative grid items-end gap-2 border-b-[1.5px] border-ink-line" style={{ height: H, gridTemplateColumns: `repeat(${ocupacion?.franjas.length ?? 18}, minmax(0,1fr))` }}>
-          <div className="absolute inset-x-0 border-t-2 border-dashed border-hold" style={{ bottom: (umbral / total) * H }} />
-          <span className="absolute right-0 bg-white pb-0.5 pl-1.5 text-[11px] font-bold text-hold-ink" style={{ bottom: (umbral / total) * H + 2 }}>{umbral} / {total}</span>
-          {ocupacion?.franjas.map((f) => {
-            const over = f.app + f.presencial >= umbral;
-            return (
-              <div key={f.hora} className="group relative flex h-full flex-col justify-end gap-0.5" style={{ opacity: f.proyectada ? 0.45 : 1 }}>
-                <span className="pointer-events-none absolute -top-1 left-1/2 z-10 hidden -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-semibold text-white group-hover:block">
-                  {f.hora}:00 · App y abonos {f.app} · Sin reserva {f.presencial}{over ? ' · ⚠' : ''}
-                </span>
-                <div className="rounded-t" style={{ height: (f.presencial / total) * H, background: STRIPES }} />
-                <div className={`bg-brand ${f.hora === nowH ? 'outline outline-2 outline-offset-2 outline-ink' : ''}`} style={{ height: (f.app / total) * H }} />
-              </div>
-            );
-          })}
-        </div>
-        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${ocupacion?.franjas.length ?? 18}, minmax(0,1fr))` }}>
-          {ocupacion?.franjas.map((f) => (
-            <span key={f.hora} className={`text-center font-mono text-[11px] ${f.hora === nowH ? 'font-extrabold text-ink' : 'text-ink-subtle'}`}>{String(f.hora).padStart(2, '0')}</span>
-          ))}
-        </div>
-      </section>
-
-      <section className="card flex flex-col overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-[18px]">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="mr-2 text-[17px] font-extrabold">Reservas activas</h2>
-            {FILTROS.map((f) => (
-              <button key={f} onClick={() => setFiltro(f)} aria-pressed={filtro === f}
-                className={`flex h-9 items-center gap-1.5 rounded-full border-[1.5px] px-3.5 text-xs font-bold tracking-wide ${filtro === f ? 'border-ink bg-ink text-white' : 'border-ink-line bg-white text-ink hover:border-ink-subtle'}`}>
-                {f.replace('_', ' ')}<span className="opacity-70">{counts[f]}</span>
-              </button>
-            ))}
-          </div>
-          <button onClick={exportar} disabled={!filtradas.length} className="btn-outline min-h-[44px]">Exportar CSV</button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead className="bg-[#F4F6F8] text-xs font-bold text-ink-muted">
-              <tr>{['ID reserva', 'Patente', 'Categoría', 'Tipo', 'Horario', 'Estado', 'Importe'].map((h, i) => <th key={h} className={`px-6 py-2.5 ${i === 6 ? 'text-right' : ''}`}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {loading && <tr><td colSpan={7} className="px-6 py-6 text-ink-muted">Cargando reservas…</td></tr>}
-              {!loading && !filtradas.length && <tr><td colSpan={7} className="px-6 py-6 text-ink-muted">No hay reservas con este estado.</td></tr>}
-              {filtradas.map((r) => (
-                <tr key={r.id} className="h-[52px] border-b border-ink-soft hover:bg-[#F8FAFF]">
-                  <td className="px-6 font-mono text-[13px] text-ink-muted">{r.id}</td>
-                  <td className="px-6"><VehiclePlateBadge patente={r.patente} size="sm" className="border-0 px-0" /></td>
-                  <td className="px-6 text-xs font-extrabold tracking-wider">{r.categoria}</td>
-                  <td className={`px-6 text-[13px] font-semibold ${r.origen === 'APP' ? 'text-brand-ink' : 'text-ink-muted'}`}>{r.origen !== 'APP' ? 'Sin reserva' : r.modalidad && r.modalidad !== 'HORA' ? `Abono ${r.modalidad.toLowerCase()}` : 'App'}</td>
-                  <td className="px-6 font-semibold">{r.modalidad && !['HORA', 'PRESENCIAL'].includes(r.modalidad) ? `hasta ${new Date(r.fin).toLocaleDateString('es-AR')}` : `${hora(r.inicio)}–${hora(r.fin)}`}</td>
-                  <td className="px-6"><StatusBadge estado={r.estado} /></td>
-                  <td className="px-6 text-right font-extrabold">{ars(r.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </>
-  );
-}
-
-/* ---------- C3 · Mi Garaje (RFW-01) ---------- */
-async function geocodificar(direccion) {
-  const q = encodeURIComponent(`${direccion}, Buenos Aires, Argentina`);
-  const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
-    headers: { 'Accept-Language': 'es' },
-  });
-  const data = await res.json();
-  if (!data.length) throw new Error('No se encontró la dirección. Probá con más detalle, ej: "Honduras 4870, Palermo, CABA".');
-  return { lat: data[0].lat, lng: data[0].lon, display: data[0].display_name };
-}
-
-function GarajePanel({ garajeId }) {
-  const [form, setForm] = useState(null);
-  const [geo, setGeo] = useState(null); // { lat, lng, display } — coordenadas geocodificadas
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState(null);
-
-  const load = () =>
-    garajesService.get(garajeId)
-      .then((g) => {
-        setForm({ nombre: g.nombre, cuit: g.cuit, direccion: g.direccion });
-        if (g.lat && g.lng) setGeo({ lat: g.lat, lng: g.lng, display: null });
-      })
-      .catch((e) => setMsg({ ok: false, text: e.message }));
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [garajeId]);
-
-  const set = (k, v) => {
-    setForm((f) => ({ ...f, [k]: v }));
-    if (k === 'direccion') setGeo(null); // dirección cambió → coordenadas desactualizadas
-  };
-
-  const guardar = async () => {
-    setSaving(true); setMsg(null);
-    try {
-      let coords = geo;
-      if (!coords) {
-        setMsg({ ok: null, text: 'Buscando coordenadas para la dirección…' });
-        coords = await geocodificar(form.direccion);
-        setGeo(coords);
-      }
-      await garajesService.updateConfiguracion(garajeId, {
-        ...form,
-        lat: Number(coords.lat).toFixed(6),
-        lng: Number(coords.lng).toFixed(6),
-      });
-      setMsg({ ok: true, text: `Datos guardados. Ubicación: ${coords.display ?? `${coords.lat}, ${coords.lng}`}` });
-    } catch (e) {
-      setMsg({ ok: false, text: e.message });
-    } finally { setSaving(false); }
-  };
-
-  if (!form) {
-    return msg
-      ? <div role="alert" className="rounded-card bg-debt-soft px-4 py-3 text-sm font-semibold text-debt-ink">{msg.text}</div>
-      : <div className="card h-48 animate-pulse" />;
-  }
-
-  return (
-    <>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-[26px] font-extrabold tracking-tight">Mi Garaje</h1>
-          <p className="text-[13px] text-ink-muted">Datos públicos del establecimiento</p>
-        </div>
-        <button onClick={guardar} disabled={saving} className="btn-action">
-          {saving ? 'Guardando…' : 'Guardar cambios'}
-        </button>
-      </div>
-
-      {msg && (
-        <div role="alert" className={`rounded-card px-4 py-3 text-sm font-semibold ${msg.ok === true ? 'bg-success-soft text-success-ink' : msg.ok === false ? 'bg-debt-soft text-debt-ink' : 'bg-hold/10 text-hold-ink'}`}>
-          {msg.text}
-        </div>
-      )}
-
-      <section className="card flex max-w-[640px] flex-col gap-5 p-[22px]">
-        <h2 className="text-[17px] font-extrabold">Información del establecimiento</h2>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-bold text-ink-muted">Nombre del garaje</span>
-          <input value={form.nombre} onChange={(e) => set('nombre', e.target.value)} className="field" placeholder="Garage Plaza Serrano" />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-bold text-ink-muted">CUIT</span>
-          <input value={form.cuit} onChange={(e) => set('cuit', e.target.value)} className="field font-mono tracking-wider" placeholder="30-12345678-9" />
-          <span className="text-[11px] text-ink-muted">Formato: XX-XXXXXXXX-X</span>
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-bold text-ink-muted">Dirección</span>
-          <input value={form.direccion} onChange={(e) => set('direccion', e.target.value)} className="field" placeholder="Honduras 4870, Palermo, CABA" />
-          {geo
-            ? <span className="text-[11px] text-success-ink">Ubicación encontrada: {Number(geo.lat).toFixed(5)}, {Number(geo.lng).toFixed(5)}</span>
-            : <span className="text-[11px] text-ink-muted">Al guardar se buscan las coordenadas automáticamente en OpenStreetMap.</span>
-          }
-        </label>
-      </section>
-    </>
-  );
-}
-
-/* ---------- Cobros — conexión de la cuenta de Mercado Pago (split de pagos, sección 7.2) ---------- */
-function CobrosPanel({ garajeId, retorno }) {
-  const [estado, setEstado] = useState(null);
-  const [conectando, setConectando] = useState(false);
-  const [msg, setMsg] = useState(
-    retorno === 'ok' ? { ok: true, text: '¡Cuenta conectada! Los pagos de tus reservas se acreditan en tu Mercado Pago.' }
-      : retorno === 'error' ? { ok: false, text: 'No se pudo conectar la cuenta. Intentá nuevamente; si el problema sigue, escribinos a soporte.' }
-        : null,
-  );
-
-  useEffect(() => {
-    pagosService.estadoMercadoPago(garajeId).then(setEstado).catch((e) => setMsg({ ok: false, text: e.message }));
-  }, [garajeId]);
-
-  const conectar = async () => {
-    setConectando(true); setMsg(null);
-    try {
-      const { url } = await pagosService.conectarMercadoPago(garajeId);
-      window.location.href = url; // salimos de la app hacia Mercado Pago
-    } catch (e) {
-      setMsg({ ok: false, text: `${e.message}. Intentá nuevamente.` });
-      setConectando(false);
-    }
-  };
-
-  return (
-    <div data-mp-marketplace-page="checkout-pro" className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-[26px] font-extrabold tracking-tight">Cobros</h1>
-        <p className="text-[13px] text-ink-muted">Cada reserva se cobra en tu cuenta de Mercado Pago. Drivly retiene automáticamente su comisión del 10 %.</p>
-      </div>
-
-      {msg && (
-        <div role="alert" className={`rounded-card px-4 py-3 text-sm font-semibold ${msg.ok ? 'bg-success-soft text-success-ink' : 'bg-debt-soft text-debt-ink'}`}>
-          {msg.text}
-        </div>
-      )}
-
-      <section className="card flex max-w-[640px] flex-col gap-4 p-[22px]">
-        <h2 className="text-[17px] font-extrabold">Cuenta de Mercado Pago</h2>
-        {!estado ? (
-          <p className="text-sm text-ink-muted" aria-live="polite">Cargando estado de la conexión…</p>
-        ) : estado.conectado ? (
-          <p className="text-sm font-semibold text-success-ink">
-            Conectada{estado.conectada_en ? ` desde el ${new Date(estado.conectada_en).toLocaleDateString('es-AR')}` : ''}. Los conductores ya pueden pagar sus reservas.
-          </p>
-        ) : (
-          <p className="text-sm text-ink-muted">
-            {estado.requiere_reautorizar
-              ? 'Mercado Pago pidió volver a autorizar a Drivly. Mientras tanto tu garaje no aparece en las búsquedas de los conductores.'
-              : 'Todavía no conectaste tu cuenta. Hasta que lo hagas, tu garaje no aparece en las búsquedas de los conductores.'}
-          </p>
-        )}
-        {estado && !estado.conectado && (
-          <button onClick={conectar} disabled={conectando} data-mp-marketplace-connect="oauth" className="btn-action self-start">
-            {conectando ? 'Redirigiendo a Mercado Pago…' : estado.requiere_reautorizar ? 'Volver a autorizar' : 'Conectar Mercado Pago'}
-          </button>
-        )}
-      </section>
-    </div>
-  );
-}
-
-/* ---------- C4 · Equipo — Playeros (RFW-06) ---------- */
-function EquipoPanel({ garajeId }) {
-  const [playeros, setPlayeros] = useState(null);
-  const [form, setForm] = useState({ email: '', nombre: '' });
-  const [adding, setAdding] = useState(false);
-  const [msg, setMsg] = useState(null);
-
-  const load = () =>
-    garajesService.getPlayeros(garajeId)
-      .then(setPlayeros)
-      .catch((e) => setMsg({ ok: false, text: e.message }));
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [garajeId]);
-
-  const agregar = async (e) => {
-    e.preventDefault();
-    setAdding(true); setMsg(null);
-    try {
-      await garajesService.addPlayero(garajeId, form);
-      setForm({ email: '', nombre: '' });
-      await load();
-      setMsg({ ok: true, text: 'Playero agregado. Entra desde la app de Drivly con Google, usando ese email.' });
-    } catch (err) {
-      setMsg({ ok: false, text: err.fields?.email?.[0] ?? err.message });
-    } finally { setAdding(false); }
-  };
-
-  const quitar = async (usuarioId) => {
-    try {
-      await garajesService.removePlayero(garajeId, usuarioId);
-      setPlayeros((ps) => ps.filter((p) => p.id !== usuarioId));
-    } catch (e) { setMsg({ ok: false, text: e.message }); }
-  };
-
-  return (
-    <>
-      <div>
-        <h1 className="text-[26px] font-extrabold tracking-tight">Equipo</h1>
-        <p className="text-[13px] text-ink-muted">Los playeros inician sesión con Google usando el email registrado aquí.</p>
-      </div>
-
-      {msg && (
-        <div role="alert" className={`rounded-card px-4 py-3 text-sm font-semibold ${msg.ok ? 'bg-success-soft text-success-ink' : 'bg-debt-soft text-debt-ink'}`}>
-          {msg.text}
-        </div>
-      )}
-
-      <section className="card flex max-w-[680px] flex-col gap-4 p-[22px]">
-        <h2 className="text-[17px] font-extrabold">Agregar playero</h2>
-        <form onSubmit={agregar} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-          <input required type="email" placeholder="Email" value={form.email}
-            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-            className="field" />
-          <input placeholder="Nombre (opcional)" value={form.nombre}
-            onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
-            className="field" />
-          <button disabled={adding || !form.email} className="btn-action min-h-[44px] px-5">
-            {adding ? '…' : 'Agregar'}
-          </button>
-        </form>
-        <p className="text-[11px] text-ink-muted">Si el playero ya tiene cuenta en Drivly sin garaje asignado, se le reasigna este garaje automáticamente.</p>
-      </section>
-
-      <section className="card overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-[18px]">
-          <h2 className="text-[17px] font-extrabold">Miembros del equipo</h2>
-          {playeros && (
-            <span className="text-[13px] text-ink-muted">
-              {playeros.length} {playeros.length === 1 ? 'playero' : 'playeros'}
-            </span>
-          )}
-        </div>
-        {!playeros ? (
-          <div className="flex flex-col gap-2 px-6 pb-6">
-            {[0, 1, 2].map((i) => <div key={i} className="h-14 animate-pulse rounded-card bg-ink-soft" />)}
-          </div>
-        ) : playeros.length === 0 ? (
-          <p className="px-6 pb-6 text-sm text-ink-muted">No hay playeros registrados en este garaje.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-[#F4F6F8] text-xs font-bold text-ink-muted">
-              <tr>
-                <th className="px-6 py-2.5 text-left">Nombre</th>
-                <th className="px-6 py-2.5 text-left">Email</th>
-                <th className="px-6 py-2.5 text-left">Estado</th>
-                <th className="px-6 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {playeros.map((p) => (
-                <tr key={p.id} className="h-[56px] border-b border-ink-soft last:border-0 hover:bg-[#F8FAFF]">
-                  <td className="px-6">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink text-[13px] font-extrabold text-white">
-                        {(p.nombre || p.email).slice(0, 2).toUpperCase()}
-                      </span>
-                      <span className="font-semibold">{p.nombre || '—'}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 text-ink-muted">{p.email}</td>
-                  <td className="px-6">
-                    <span className={`inline-flex h-6 items-center rounded-full px-2.5 text-xs font-bold ${p.is_active ? 'bg-success-soft text-success-ink' : 'bg-ink-soft text-ink-muted'}`}>
-                      {p.is_active ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td className="px-6 text-right">
-                    <button onClick={() => quitar(p.id)} className="text-xs font-bold text-debt-ink hover:underline">
-                      Quitar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </>
-  );
-}
-
-/* ---------- Deudas de overstay: reclamos y condonación (regla 4) ---------- */
-function CondonarForm({ deuda, onHecho, onCancelar }) {
-  const [motivo, setMotivo] = useState('');
-  const [monto, setMonto] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-
-  const enviar = async (e) => {
-    e.preventDefault();
-    setBusy(true); setError(null);
-    try {
-      await operacionService.condonar(deuda.reserva_id, { motivo: motivo.trim(), ...(monto ? { monto } : {}) });
-      onHecho();
-    } catch (err) { setError(err.message); setBusy(false); }
-  };
-
-  return (
-    <form onSubmit={enviar} className="flex flex-col gap-2.5 border-t border-ink-line pt-3">
-      <label className="flex flex-col gap-1 text-[13px] font-semibold">Motivo
-        <input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={500} required placeholder="Ej.: demora en la cola de salida"
-          className="min-h-touch rounded-card border-[1.5px] border-ink-line px-3 text-sm font-normal outline-none focus:border-brand" />
-      </label>
-      <label className="flex flex-col gap-1 text-[13px] font-semibold">Monto a condonar (vacío = todo el saldo)
-        <input value={monto} onChange={(e) => setMonto(e.target.value)} type="number" min="0.01" max={deuda.total} step="0.01" placeholder={ars(deuda.total)}
-          className="min-h-touch rounded-card border-[1.5px] border-ink-line px-3 font-mono text-sm font-normal outline-none focus:border-brand" />
-      </label>
-      {error && <p role="alert" className="text-sm font-bold text-debt-ink">{error}</p>}
-      <div className="flex justify-end gap-2.5">
-        <button type="button" onClick={onCancelar} className="btn-outline">Cancelar</button>
-        <button disabled={busy || !motivo.trim()} className="btn-action">{busy ? 'Guardando…' : 'Condonar'}</button>
-      </div>
-    </form>
-  );
-}
-
-function DeudasPanel({ garajeId }) {
-  const [deudas, setDeudas] = useState(null);
-  const [error, setError] = useState(null);
-  const [condonando, setCondonando] = useState(null);
-
-  const load = useMemo(() => () => operacionService.deudas(garajeId)
-    .then((d) => { setDeudas(d); setError(null); })
-    .catch((e) => { setDeudas([]); setError(e.message); }), [garajeId]);
-  useEffect(() => { load(); }, [load]);
-
-  return (
-    <>
-      <div><h1 className="text-[26px] font-extrabold tracking-tight">Deudas</h1><p className="text-[13px] text-ink-muted">Overstays sin pagar. Si un conductor lo reclama, podés condonarlos total o parcialmente dejando el motivo.</p></div>
-      {error && <div role="alert" className="rounded-card bg-debt-soft px-4 py-3 text-sm font-semibold text-debt-ink">{error}</div>}
-      {deudas === null && <div className="card h-32 animate-pulse" />}
-      {deudas?.length === 0 && !error && <div className="card p-6 text-sm text-ink-muted">No hay deudas pendientes.</div>}
-      {deudas?.map((d) => (
-        <section key={d.reserva_id} className="card flex flex-col gap-3 p-[18px]">
-          <div className="flex flex-wrap items-center gap-3">
-            <VehiclePlateBadge patente={d.patente} size="sm" />
-            <span className="text-[13px] text-ink-muted">Salió {new Date(d.egreso_real).toLocaleDateString('es-AR')} · +{d.minutos_excedidos} min</span>
-            {d.estado === 'INCOBRABLE' && <span className="rounded-full bg-debt-soft px-2.5 py-0.5 text-xs font-extrabold text-debt-ink">INCOBRABLE</span>}
-            <span className="ml-auto text-xl font-extrabold">{ars(d.total)}</span>
-            {condonando !== d.reserva_id && <button onClick={() => setCondonando(d.reserva_id)} className="btn-outline">Condonar</button>}
-          </div>
-          {Number(d.monto_condonado) > 0 && <p className="whitespace-pre-line text-[13px] text-ink-muted">Ya condonado: {ars(d.monto_condonado)}. {d.motivo_condonacion}</p>}
-          {condonando === d.reserva_id && <CondonarForm deuda={d} onCancelar={() => setCondonando(null)} onHecho={() => { setCondonando(null); load(); }} />}
-        </section>
-      ))}
-    </>
-  );
-}
+const iniciales = (nombre) => (nombre || 'A').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
 export default function AdminPortalView({ user }) {
-  const [garajeId, setGarajeId] = useState(null);
+  const theme = useTheme();
+  const escritorio = useMediaQuery(theme.breakpoints.up('lg'), { noSsr: true });
+  const movil = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
+  // Escritorio: menú completo. Tablet: sólo íconos, y la hamburguesa lo expande. Celular: drawer cerrado que tapa el contenido.
+  const [expandido, setExpandido] = useState(escritorio);
+  const [menuCelular, setMenuCelular] = useState(false);
+  const [cuenta, setCuenta] = useState(null);
+  const abierto = movil ? menuCelular : expandido;
+  const anchoMenu = movil ? 0 : expandido ? ANCHO_MENU : ANCHO_ICONOS;
+  const soloIconos = !movil && !expandido;
+
+  useEffect(() => { setExpandido(escritorio); }, [escritorio]);
+
+  const [garaje, setGaraje] = useState(null);
   const [sinGaraje, setSinGaraje] = useState(false);
   // Al volver de autorizar en Mercado Pago el backend redirige a /?mp_conexion=ok|error
   const [retornoMP] = useState(() => new URLSearchParams(window.location.search).get('mp_conexion'));
@@ -726,53 +62,110 @@ export default function AdminPortalView({ user }) {
   useEffect(() => {
     garajesService.list()
       .then((gs) => {
-        if (gs.length) setGarajeId(gs[0].id);
+        if (gs.length) setGaraje(gs[0]);
         else setSinGaraje(true);
       })
       .catch(() => setSinGaraje(true));
   }, []);
 
-  return (
-    <div className="mx-auto grid min-h-[800px] w-full max-w-[1440px] overflow-hidden rounded-sheet bg-paper shadow-2xl lg:grid-cols-[240px_1fr]">
-      <aside className="flex flex-col gap-5 bg-ink px-3.5 py-5 text-white">
-        <div className="flex items-center gap-2.5 px-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-brand text-[17px] font-extrabold">D</span>
-          <span className="text-lg font-extrabold">Drivly</span>
-          <span className="ml-auto text-[11px] font-bold text-ink-subtle">ADMIN</span>
-        </div>
-        <nav className="flex gap-1 overflow-x-auto lg:flex-col">
-          {NAV.map((n) => (
-            <button key={n.id} onClick={() => setSection(n.id)} aria-current={section === n.id ? 'page' : undefined}
-              className={`flex min-h-touch shrink-0 items-center rounded-card px-3.5 text-left text-sm ${section === n.id ? 'bg-brand/25 font-bold text-white shadow-[inset_3px_0_0_#0066FF]' : 'font-semibold text-ink-subtle hover:bg-ink-800'}`}>
-              {n.label}
-            </button>
-          ))}
-        </nav>
-        <div className="mt-auto hidden items-center gap-2.5 px-2 lg:flex">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-800 text-[13px] font-extrabold">{(user?.nombre ?? 'A').split(' ').map((w) => w[0]).join('').slice(0, 2)}</span>
-          <div className="flex flex-col"><span className="text-[13px] font-bold">{user?.nombre ?? 'Administrador'}</span><span className="text-[11px] text-ink-subtle">Propietario</span></div>
-        </div>
-      </aside>
-      <main className="flex min-w-0 flex-col gap-5 p-6 lg:px-8 lg:py-7">
-        {sinGaraje ? (
-          <div className="card flex flex-col gap-3 p-8">
-            <h2 className="text-[17px] font-extrabold">No tenés ningún garaje registrado</h2>
-            <p className="text-sm text-ink-muted">Contactá a soporte de Drivly para dar de alta tu establecimiento, o ejecutá <code className="rounded bg-ink-soft px-1 py-0.5 font-mono text-xs">python manage.py seed_dev</code> en el servidor para cargar datos de prueba.</p>
-          </div>
-        ) : !garajeId ? (
-          <div className="card h-48 animate-pulse" />
-        ) : (
-          <>
-            {section === 'tarifas' && <TarifasPanel garajeId={garajeId} />}
-            {section === 'reportes' && <MonitorPanel garajeId={garajeId} />}
-            {section === 'garaje' && <GarajePanel garajeId={garajeId} />}
-            {section === 'equipo' && <EquipoPanel garajeId={garajeId} />}
-            {section === 'cobros' && <CobrosPanel garajeId={garajeId} retorno={retornoMP} />}
-            {section === 'deudas' && <DeudasPanel garajeId={garajeId} />}
-          </>
-        )}
-      </main>
+  const alternarMenu = () => (movil ? setMenuCelular((a) => !a) : setExpandido((a) => !a));
+  const elegir = (id) => { setSection(id); setMenuCelular(false); };
+  const garajeId = garaje?.id;
 
-    </div>
+  return (
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      {/* Por encima del menú: la hamburguesa queda siempre a mano */}
+      <AppBar position="fixed" sx={{ zIndex: theme.zIndex.drawer + 1 }}>
+        <Toolbar sx={{ gap: 1 }}>
+          <IconButton color="inherit" edge="start" onClick={alternarMenu} aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={abierto}>
+            <MenuIcon />
+          </IconButton>
+          <Avatar variant="rounded" sx={{ width: 32, height: 32, bgcolor: 'var(--accent)', color: 'var(--bg)', fontSize: 16, fontWeight: 700 }}>D</Avatar>
+          <Typography sx={{ fontWeight: 700 }}>Drivly</Typography>
+          {USE_MOCKS && <Chip label="DATOS SIMULADOS" size="small" color="warning" sx={{ fontWeight: 700 }} />}
+          <Box sx={{ flexGrow: 1 }} />
+          <IconButton onClick={(e) => setCuenta(e.currentTarget)} aria-label="Cuenta" sx={{ p: 0.5 }}>
+            <Avatar sx={{ width: 36, height: 36, fontSize: 14, fontWeight: 600, bgcolor: 'var(--surface-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>{iniciales(user?.nombre)}</Avatar>
+          </IconButton>
+          <Menu anchorEl={cuenta} open={Boolean(cuenta)} onClose={() => setCuenta(null)}>
+            <Box sx={{ px: 2, py: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>{user?.nombre ?? 'Administrador'}</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>{user?.email ?? 'Propietario'}</Typography>
+            </Box>
+            <Divider />
+            <MenuItem onClick={() => authService.logout()}>Salir</MenuItem>
+          </Menu>
+        </Toolbar>
+      </AppBar>
+
+      <Drawer
+        variant={movil ? 'temporary' : 'permanent'}
+        open={movil ? menuCelular : true}
+        onClose={() => setMenuCelular(false)}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          '& .MuiDrawer-paper': {
+            width: movil ? ANCHO_MENU : anchoMenu,
+            boxSizing: 'border-box',
+            overflowX: 'hidden',
+            transition: theme.transitions.create('width', { duration: theme.transitions.duration.enteringScreen }),
+          },
+        }}
+      >
+        <Toolbar />
+        {garaje && !soloIconos && (
+          <Box sx={{ px: 3, pt: 3, pb: 1 }}>
+            <Typography variant="overline" sx={{ display: 'block', color: 'text.secondary', letterSpacing: '0.1em', lineHeight: 1.6 }}>Garaje</Typography>
+            <Typography sx={{ fontWeight: 600 }} noWrap>{garaje.nombre}</Typography>
+          </Box>
+        )}
+        <List component="nav" aria-label="Secciones" sx={{ px: 1.5 }}>
+          {NAV.map(({ id, label, Icono }) => (
+            <Tooltip key={id} title={soloIconos ? label : ''} placement="right">
+              <ListItemButton selected={section === id} onClick={() => elegir(id)} aria-current={section === id ? 'page' : undefined} aria-label={label}
+                sx={{ mb: 0.5, justifyContent: soloIconos ? 'center' : 'flex-start' }}>
+                <ListItemIcon sx={{ minWidth: soloIconos ? 0 : 40 }}><Icono /></ListItemIcon>
+                {!soloIconos && <ListItemText primary={label} slotProps={{ primary: { variant: 'body2', sx: { fontWeight: section === id ? 600 : 400 } } }} />}
+              </ListItemButton>
+            </Tooltip>
+          ))}
+        </List>
+      </Drawer>
+
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          minWidth: 0,
+          ml: `${anchoMenu}px`,
+          transition: theme.transitions.create('margin-left', { duration: theme.transitions.duration.enteringScreen }),
+        }}
+      >
+        <Toolbar />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, p: { xs: 2, sm: 3, md: 4 } }}>
+          {sinGaraje ? (
+            <Card>
+              <CardContent sx={{ p: 4 }}>
+                <Typography variant="h2" gutterBottom>No tenés ningún garaje registrado</Typography>
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                  Contactá a soporte de Drivly para dar de alta tu establecimiento, o ejecutá <code>python manage.py seed_dev</code> en el servidor para cargar datos de prueba.
+                </Typography>
+              </CardContent>
+            </Card>
+          ) : !garajeId ? (
+            <Skeleton variant="rounded" height={192} />
+          ) : (
+            <>
+              {section === 'tarifas' && <TarifasPanel garajeId={garajeId} />}
+              {section === 'reportes' && <MonitorPanel garajeId={garajeId} />}
+              {section === 'garaje' && <GarajePanel garajeId={garajeId} />}
+              {section === 'equipo' && <EquipoPanel garajeId={garajeId} />}
+              {section === 'cobros' && <CobrosPanel garajeId={garajeId} retorno={retornoMP} />}
+              {section === 'deudas' && <DeudasPanel garajeId={garajeId} />}
+            </>
+          )}
+        </Box>
+      </Box>
+    </Box>
   );
 }

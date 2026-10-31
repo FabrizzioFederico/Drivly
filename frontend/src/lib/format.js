@@ -4,6 +4,9 @@ export const ars = (n) =>
 export const hora = (iso) =>
   iso ? new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '—';
 
+/** 1600000 -> "1.600.000" (para campos con el $ aparte). */
+export const miles = (n) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 }).format(n ?? 0);
+
 export function downloadCsv(filename, rows, columns) {
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const csv = [columns.map((c) => esc(c.label)).join(','), ...rows.map((r) => columns.map((c) => esc(c.value(r))).join(','))].join('\n');
