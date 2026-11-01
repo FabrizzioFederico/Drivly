@@ -57,6 +57,12 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | GET | `operacion/mis-deudas/` | Deudas pendientes del conductor (lista sin paginar) |
 | POST | `operacion/mis-deudas/{reserva_id}/pagar/` | `{ "canal": "app" }` → `{ init_point }`; vuelve con `external_reference=deuda:<reserva_id>` |
 
+### Abonos
+
+Se usan los mismos endpoints que una reserva por hora, con `modalidad` en `SEMANAL`, `MENSUAL` o `ANUAL` en
+`garajes/disponibles/`, `reservas/cotizar/` y `reservas/hold/`. El fin definitivo lo calcula el backend: el que manda la app
+sólo sirve para buscar. El QR se reutiliza en cada ingreso y egreso hasta que vence el abono.
+
 ## Endpoints del playero
 
 Con rol `PLAYERO` la app abre `ui/playero/PlayeroScreen.kt`.
@@ -112,6 +118,11 @@ Renderizarlo como QR (por ejemplo con ZXing). Si la reserva se cancela, borrar e
 
 Mostrar "Cancelar reserva" sólo mientras `now <= cancelable_hasta` (2 h antes del inicio, o 10 min después de pagar).
 El servidor vuelve a validar el plazo: si vence entre medio, responde 409 `ESTADO_INVALIDO`.
+
+## Cámara del playero
+
+La pantalla del playero pide el permiso `CAMERA` recién al elegir qué va a escanear. El visor usa CameraX y ML Kit, con el modelo
+incluido en la app. Sin permiso o sin cámara, se puede cargar la patente o el código a mano.
 
 ## Pruebas
 
