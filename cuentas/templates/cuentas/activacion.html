@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Activá tu cuenta</title></head>
+<body style="margin:0;padding:24px 12px;background:#f2f4f5;font-family:Arial,Helvetica,sans-serif;color:#1d2327;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden;">
+        <tr><td style="background:#0f1416;padding:20px 24px;">
+          <span style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:6px;background:#00C2A8;color:#0f1416;font-weight:bold;">D</span>
+          <span style="color:#ffffff;font-size:18px;font-weight:bold;vertical-align:middle;margin-left:8px;">Drivly</span>
+        </td></tr>
+        <tr><td style="padding:28px 24px;">
+          <p style="margin:0 0 4px;font-size:14px;color:#5b6670;">Hola{% if nombre %} {{ nombre }}{% endif %},</p>
+          <h1 style="margin:0 0 12px;font-size:22px;">Activá tu cuenta</h1>
+          <p style="margin:0 0 24px;font-size:15px;line-height:1.5;">Gracias por crear tu cuenta en Drivly. Tocá el botón para activarla y empezar a reservar.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:8px;background:#00C2A8;">
+            <a href="{{ link }}" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:bold;color:#0f1416;text-decoration:none;">Activar mi cuenta</a>
+          </td></tr></table>
+          <p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#5b6670;">
+            El link vence en {{ dias }} días. Si el botón no funciona, copiá esta dirección en el navegador:<br>
+            <a href="{{ link }}" style="color:#00796B;word-break:break-all;">{{ link }}</a>
+          </p>
+          <p style="margin:16px 0 0;font-size:13px;color:#5b6670;">Si no creaste una cuenta en Drivly, ignorá este email.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

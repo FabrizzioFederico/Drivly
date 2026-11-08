@@ -1,0 +1,10 @@
+{% autoescape off %}Hola{% if nombre %} {{ nombre }}{% endif %}:
+
+Gracias por crear tu cuenta en Drivly. Para activarla, abrí este link:
+
+{{ link }}
+
+El link vence en {{ dias }} días. Si no creaste una cuenta en Drivly, ignorá este email.
+
+Drivly
+{% endautoescape %}

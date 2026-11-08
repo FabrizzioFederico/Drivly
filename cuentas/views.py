@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate
+from django.shortcuts import render
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser
@@ -7,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from . import perfil
+from . import activacion, perfil
 from .models import Rol, Usuario
 from .serializers import (
     ConfirmacionEmailSerializer,
@@ -15,6 +16,7 @@ from .serializers import (
     LoginSerializer,
     PedidoCambioEmailSerializer,
     RegistroSerializer,
+    ReenvioActivacionSerializer,
     UsuarioSerializer,
 )
 from .services import usuario_desde_google, verificar_token_google
@@ -31,7 +33,10 @@ def respuesta_de_sesion(usuario, estado=status.HTTP_200_OK):
 
 
 class RegistroView(APIView):
-    """POST /api/auth/registro/ {nombre, email, password} -> {access, refresh, user}. Siempre CONDUCTOR."""
+    """
+    POST /api/auth/registro/ {nombre, email, password} -> 201 {detail, email, email_enviado}.
+    La cuenta (siempre CONDUCTOR) queda sin activar hasta que se toca el link del email: no devuelve sesión.
+    """
 
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -40,13 +45,51 @@ class RegistroView(APIView):
     def post(self, request):
         datos = RegistroSerializer(data=request.data)
         datos.is_valid(raise_exception=True)
-        usuario = Usuario.objects.create_user(
-            email=datos.validated_data["email"],
-            password=datos.validated_data["password"],
-            nombre=datos.validated_data["nombre"].strip(),
-            rol=Rol.CONDUCTOR,
-        )
-        return respuesta_de_sesion(usuario, status.HTTP_201_CREATED)
+        email, nombre = datos.validated_data["email"], datos.validated_data["nombre"].strip()
+        usuario = Usuario.objects.filter(email__iexact=email).first()
+        if usuario is None:
+            usuario = Usuario.objects.create_user(
+                email=email, password=datos.validated_data["password"], nombre=nombre, rol=Rol.CONDUCTOR,
+                email_verificado=False,
+            )
+        else:  # cuenta pendiente que se vuelve a registrar: los links anteriores dejan de valer
+            usuario.nombre = nombre
+            usuario.set_password(datos.validated_data["password"])
+            usuario.save(update_fields=["nombre", "password"])
+        enviado = activacion.enviar(usuario)
+        return Response({
+            "detail": f"Te mandamos un email a {email}. Tocá el link para activar tu cuenta."
+            if enviado else "Creamos tu cuenta, pero no pudimos mandar el email de activación. Pedí que te lo reenviemos.",
+            "email": email,
+            "email_enviado": enviado,
+        }, status=status.HTTP_201_CREATED)
+
+
+class ReenviarActivacionView(APIView):
+    """
+    POST /api/auth/activar/reenviar/ {email} -> 202 siempre, exista o no la cuenta (no revela qué emails están
+    registrados). Sólo manda el email si la cuenta está pendiente de activación.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "auth"
+
+    def post(self, request):
+        datos = ReenvioActivacionSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        usuario = Usuario.objects.filter(email__iexact=datos.validated_data["email"].strip(),
+                                         email_verificado=False, is_active=True).first()
+        if usuario:
+            activacion.enviar(usuario)
+        return Response({"detail": "Si la cuenta está pendiente de activación, te mandamos un email nuevo."},
+                        status=status.HTTP_202_ACCEPTED)
+
+
+def activar_cuenta(request, uidb64, token):
+    """GET /api/auth/activar/<uid>/<token>/ — el link del email. Muestra una página, no JSON: se abre en el navegador."""
+    usuario = activacion.activar(uidb64, token)
+    return render(request, "cuentas/activada.html", {"ok": usuario is not None}, status=200 if usuario else 400)
 
 
 class LoginView(APIView):
@@ -69,6 +112,12 @@ class LoginView(APIView):
             # 401 explícito: AuthenticationFailed sin autenticador configurado sale como 403
             return Response({"detail": "Email o contraseña incorrectos.", "code": "CREDENCIALES_INVALIDAS"},
                             status=status.HTTP_401_UNAUTHORIZED)
+        # Sólo se avisa con la contraseña correcta: así no se puede averiguar qué emails están registrados
+        if not usuario.email_verificado:
+            return Response({
+                "detail": f"Tu cuenta todavía no está activada. Tocá el link que te mandamos a {usuario.email}.",
+                "code": "CUENTA_SIN_ACTIVAR",
+            }, status=status.HTTP_403_FORBIDDEN)
         return respuesta_de_sesion(usuario)
 
 

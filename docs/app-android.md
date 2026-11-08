@@ -28,8 +28,10 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
 | POST | `auth/google/` | `{ "id_token": "<Credential Manager>" }` | `{ access, refresh, user }` — crea la cuenta como CONDUCTOR |
-| POST | `auth/registro/` | `{ nombre, email, password }` | igual; la cuenta siempre se crea como CONDUCTOR (201) |
-| POST | `auth/login/` | `{ email, password }` | igual; 401 `CREDENCIALES_INVALIDAS` si no coinciden |
+| POST | `auth/registro/` | `{ nombre, email, password }` | 201 `{ detail, email, email_enviado }`: la cuenta (siempre CONDUCTOR) queda sin activar y llega un email con el link |
+| POST | `auth/activar/reenviar/` | `{ email }` | 202 siempre (no revela si la cuenta existe); manda otro link si está pendiente |
+| GET | `auth/activar/{uid}/{token}/` | — | El link del email: página HTML de "cuenta activada" con el botón `drivly://cuenta-activada`. Vence a los 3 días |
+| POST | `auth/login/` | `{ email, password }` | `{ access, refresh, user }`; 401 `CREDENCIALES_INVALIDAS` si no coinciden; 403 `CUENTA_SIN_ACTIVAR` si falta el link |
 | POST | `auth/dev-login/` | `{ "rol": "CONDUCTOR" }` | igual (sólo con `DEBUG=True`) |
 | POST | `auth/refresh/` | `{ "refresh": "..." }` | `{ access, refresh }` — el refresh rota: guardar el nuevo |
 | GET/PATCH | `auth/me/` | `{ nombre?, genero?, telefono? }` | usuario logueado (`foto` es una ruta relativa: `/api/media/...`) |

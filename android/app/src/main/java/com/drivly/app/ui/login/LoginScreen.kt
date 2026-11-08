@@ -32,7 +32,9 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -66,6 +68,7 @@ import com.drivly.app.DrivlyApplication
 import com.drivly.app.data.Sesion
 import com.drivly.app.data.api.DrivlyApi
 import com.drivly.app.data.api.PedidoDevLogin
+import com.drivly.app.data.api.PedidoEmail
 import com.drivly.app.data.api.PedidoGoogleLogin
 import com.drivly.app.data.api.PedidoLogin
 import com.drivly.app.data.api.PedidoRegistro
@@ -85,14 +88,41 @@ class LoginViewModel(private val api: DrivlyApi, private val sesion: Sesion) : V
     var error by mutableStateOf<String?>(null)
         private set
 
+    /** Mensaje informativo (no es un error): "te mandamos un email...". */
+    var aviso by mutableStateOf<String?>(null)
+        private set
+
+    /** Email de una cuenta creada o sin activar: el formulario vuelve a "Ingresar" y ofrece reenviar el link. */
+    var pendienteDeActivar by mutableStateOf<String?>(null)
+        private set
+
+    /** El último email con el que se intentó ingresar: para reenviar el link si la cuenta no está activada. */
+    private var ultimoEmail: String? = null
+
     fun conGoogle(idToken: String) = ingresar { api.googleLogin(PedidoGoogleLogin(idToken)) }
 
     /** Cuenta común con email y contraseña. */
-    fun conEmail(email: String, password: String) = ingresar { api.login(PedidoLogin(email.trim(), password)) }
+    fun conEmail(email: String, password: String) {
+        ultimoEmail = email.trim()
+        if (pendienteDeActivar != null && pendienteDeActivar != ultimoEmail) pendienteDeActivar = null
+        ingresar { api.login(PedidoLogin(email.trim(), password)) }
+    }
 
-    /** La cuenta nueva siempre es de conductor: el administrador la pasa a playero desde el portal web. */
-    fun registrarse(nombre: String, email: String, password: String) =
-        ingresar { api.registro(PedidoRegistro(nombre.trim(), email.trim(), password)) }
+    /**
+     * La cuenta nueva siempre es de conductor (el administrador la pasa a playero desde el portal web) y queda
+     * sin activar hasta tocar el link del email.
+     */
+    fun registrarse(nombre: String, email: String, password: String) = tarea {
+        val r = api.registro(PedidoRegistro(nombre.trim(), email.trim(), password))
+        pendienteDeActivar = r.email
+        if (r.emailEnviado) aviso = r.detail else error = r.detail
+    }
+
+    fun reenviarActivacion() = tarea {
+        val email = pendienteDeActivar ?: return@tarea
+        api.reenviarActivacion(PedidoEmail(email))
+        aviso = "Te mandamos un email nuevo a $email. Revisá también la carpeta de spam."
+    }
 
     /** Acceso rápido de desarrollo (POST /auth/dev-login/, sólo con DEBUG=True en el backend). */
     fun desarrollo(rol: String = "CONDUCTOR") = ingresar { api.devLogin(PedidoDevLogin(rol)) }
@@ -103,21 +133,29 @@ class LoginViewModel(private val api: DrivlyApi, private val sesion: Sesion) : V
 
     fun limpiarError() {
         error = null
+        aviso = null
     }
 
-    private fun ingresar(pedido: suspend () -> RespuestaLogin) {
+    private fun ingresar(pedido: suspend () -> RespuestaLogin) = tarea {
+        val r = pedido()
+        if (r.user.rol !in ROLES_DE_LA_APP) {
+            error = "Esta app es para conductores y playeros. Los garajes se administran desde el portal web."
+        } else {
+            sesion.guardar(r.access, r.refresh, r.user.nombre, r.user.rol) // la navegación reacciona al guardar
+        }
+    }
+
+    private fun tarea(bloque: suspend () -> Unit) {
         cargando = true
         error = null
+        aviso = null
         viewModelScope.launch {
             try {
-                val r = pedido()
-                if (r.user.rol !in ROLES_DE_LA_APP) {
-                    error = "Esta app es para conductores y playeros. Los garajes se administran desde el portal web."
-                } else {
-                    sesion.guardar(r.access, r.refresh, r.user.nombre, r.user.rol) // la navegación reacciona al guardar
-                }
+                bloque()
             } catch (e: Exception) {
-                error = e.comoErrorDrivly().message
+                val causa = e.comoErrorDrivly()
+                error = causa.message
+                if (causa.codigo == "CUENTA_SIN_ACTIVAR") pendienteDeActivar = pendienteDeActivar ?: ultimoEmail
             } finally {
                 cargando = false
             }
@@ -185,9 +223,16 @@ fun LoginScreen() {
 
             Spacer(Modifier.height(24.dp))
             if (vm.cargando) CircularProgressIndicator()
+            vm.aviso?.let {
+                Text(it, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            }
             vm.error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            }
+            if (vm.pendienteDeActivar != null && !vm.cargando) {
+                TextButton(onClick = vm::reenviarActivacion) { Text("Reenviar email de activación") }
             }
         }
     }
@@ -212,6 +257,16 @@ private fun FormularioEmail(vm: LoginViewModel) {
     var password by rememberSaveable { mutableStateOf("") }
     var verPassword by rememberSaveable { mutableStateOf(false) }
     val foco = LocalFocusManager.current
+
+    // Cuenta creada: vuelve a "Ingresar" con el email cargado, para entrar después de tocar el link del email
+    LaunchedEffect(vm.pendienteDeActivar) {
+        val pendiente = vm.pendienteDeActivar ?: return@LaunchedEffect
+        if (creando) {
+            creando = false
+            email = pendiente
+            password = ""
+        }
+    }
 
     val completo = email.contains("@") && password.isNotEmpty() &&
         (!creando || (nombre.isNotBlank() && password.length >= 8))

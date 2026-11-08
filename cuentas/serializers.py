@@ -44,7 +44,9 @@ class RegistroSerializer(serializers.Serializer):
 
     def validate_email(self, email):
         email = email.strip().lower()
-        if Usuario.objects.filter(email__iexact=email).exists():
+        existente = Usuario.objects.filter(email__iexact=email).first()
+        # Una cuenta que nunca se activó se puede volver a registrar (p. ej. se equivocó de contraseña o perdió el email)
+        if existente and (existente.email_verificado or existente.google_sub):
             raise serializers.ValidationError("Ya existe una cuenta con ese email. Ingresá con tu contraseña o con Google.")
         return email
 
@@ -56,6 +58,10 @@ class RegistroSerializer(serializers.Serializer):
         except DjangoValidationError as error:
             raise serializers.ValidationError({"password": list(error.messages)})
         return datos
+
+
+class ReenvioActivacionSerializer(serializers.Serializer):
+    email = serializers.EmailField()
 
 
 class LoginSerializer(serializers.Serializer):

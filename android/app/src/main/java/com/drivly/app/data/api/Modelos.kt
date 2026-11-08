@@ -100,6 +100,17 @@ data class PedidoLogin(val email: String, val password: String)
 @Serializable
 data class PedidoRegistro(val nombre: String, val email: String, val password: String)
 
+/** La cuenta nueva queda sin activar: no trae sesión, sólo el aviso del email con el link. */
+@Serializable
+data class RespuestaRegistro(
+    val detail: String,
+    val email: String,
+    @SerialName("email_enviado") val emailEnviado: Boolean = true,
+)
+
+@Serializable
+data class PedidoEmail(val email: String)
+
 @Serializable
 data class PedidoCategoria(val categoria: String)
 

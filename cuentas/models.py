@@ -80,6 +80,9 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     # Regla 3: veces que un playero corrigió una categoría declarada. Con 2 ya no puede declarar.
     correcciones_categoria = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    # Cuenta común creada en la app: falso hasta que toca el link de activación del email.
+    # Google ya verifica el email, y las cuentas anteriores a esta regla quedan verificadas.
+    email_verificado = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
 

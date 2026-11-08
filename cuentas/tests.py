@@ -179,13 +179,75 @@ def sin_limite(settings):
     cache.clear()  # el throttle de auth guarda los intentos en la caché
 
 
-def test_registro_crea_conductor_y_devuelve_sesion(db, cliente, sin_limite):
-    r = cliente().post("/api/auth/registro/", {"nombre": " Ana ", "email": "Ana@Mail.com",
-                                               "password": "una-clave-larga-9", "rol": "ADMIN_GARAJE"}, format="json")
-    assert r.status_code == 201 and r.data["access"] and r.data["refresh"]
-    assert r.data["user"]["rol"] == "CONDUCTOR" and r.data["user"]["email"] == "ana@mail.com"
+def _registrar(cliente, email="Ana@Mail.com", password="una-clave-larga-9", **extra):
+    return cliente().post("/api/auth/registro/", {"nombre": " Ana ", "email": email, "password": password, **extra},
+                          format="json")
+
+
+def _link_del_email(correo):
+    return re.search(r"https?://\S+/api/auth/activar/[^/\s]+/[^/\s]+/", correo.body).group(0)
+
+
+def _ingresar(cliente, email="ana@mail.com", password="una-clave-larga-9"):
+    return cliente().post("/api/auth/login/", {"email": email, "password": password}, format="json")
+
+
+def test_registro_crea_conductor_pendiente_y_manda_el_link(db, cliente, sin_limite, settings):
+    settings.BACKEND_URL = "https://drivly.test"
+    r = _registrar(cliente, rol="ADMIN_GARAJE")
+    assert r.status_code == 201 and r.data["email_enviado"] and "access" not in r.data
     u = Usuario.objects.get(email="ana@mail.com")
-    assert u.nombre == "Ana" and u.check_password("una-clave-larga-9")
+    assert u.rol == Rol.CONDUCTOR and u.nombre == "Ana" and u.check_password("una-clave-larga-9")
+    assert u.email_verificado is False
+    assert len(mail.outbox) == 1 and mail.outbox[0].to == ["ana@mail.com"]
+    assert _link_del_email(mail.outbox[0]).startswith("https://drivly.test/api/auth/activar/")
+    assert "Activar mi cuenta" in mail.outbox[0].alternatives[0][0]
+
+
+def test_sin_activar_no_se_puede_ingresar_y_con_el_link_si(db, cliente, sin_limite):
+    _registrar(cliente)
+    r = _ingresar(cliente)
+    assert r.status_code == 403 and r.data["code"] == "CUENTA_SIN_ACTIVAR"
+    assert _ingresar(cliente, password="otra-clave-9").data["code"] == "CREDENCIALES_INVALIDAS"  # no revela la cuenta
+
+    link = _link_del_email(mail.outbox[0])
+    pagina = cliente().get(link[link.index("/api/"):])
+    assert pagina.status_code == 200 and "Tu cuenta está activada" in pagina.content.decode()
+    assert Usuario.objects.get(email="ana@mail.com").email_verificado
+    r = _ingresar(cliente)
+    assert r.status_code == 200 and r.data["access"] and r.data["user"]["rol"] == "CONDUCTOR"
+
+
+def test_link_adulterado_o_de_un_registro_anterior_no_activa(db, cliente, sin_limite):
+    _registrar(cliente)
+    viejo = _link_del_email(mail.outbox[0])
+    ruta = viejo[viejo.index("/api/"):]
+    assert cliente().get(ruta[:-3] + "xx/").status_code == 400
+    # Se registra de nuevo con otra contraseña: el link anterior deja de valer y llega uno nuevo
+    assert _registrar(cliente, password="la-nueva-clave-9").status_code == 201
+    assert cliente().get(ruta).status_code == 400
+    nuevo = _link_del_email(mail.outbox[1])
+    assert cliente().get(nuevo[nuevo.index("/api/"):]).status_code == 200
+    assert _ingresar(cliente, password="la-nueva-clave-9").status_code == 200
+
+
+def test_reenviar_activacion_no_revela_cuentas(db, cliente, sin_limite, conductor):
+    _registrar(cliente)
+    for email in ("ana@mail.com", "nadie@mail.com", conductor.email):
+        r = cliente().post("/api/auth/activar/reenviar/", {"email": email}, format="json")
+        assert r.status_code == 202
+    assert [m.to for m in mail.outbox] == [["ana@mail.com"], ["ana@mail.com"]]  # sólo la pendiente recibe otro
+
+
+def test_registro_con_cuenta_activa_se_rechaza(conductor, cliente, sin_limite):
+    r = _registrar(cliente, email=conductor.email)
+    assert r.status_code == 400 and "email" in r.data and not mail.outbox
+
+
+def test_google_activa_una_cuenta_pendiente(db, cliente, sin_limite):
+    _registrar(cliente, email="nuevo@gmail.com")
+    u = services.usuario_desde_google(INFO)
+    assert u.email_verificado and u.google_sub == "google-123" and not u.has_usable_password()
 
 
 @pytest.mark.parametrize("password", ["corta", "12345678901", "password123"])

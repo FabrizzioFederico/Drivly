@@ -33,9 +33,13 @@ interface DrivlyApi {
     @POST("auth/login/")
     suspend fun login(@Body pedido: PedidoLogin): RespuestaLogin
 
-    /** Crea la cuenta siempre como conductor; el admin la pasa a playero desde el portal web. */
+    /** Crea la cuenta siempre como conductor, sin activar: llega un email con el link de activación. */
     @POST("auth/registro/")
-    suspend fun registro(@Body pedido: PedidoRegistro): RespuestaLogin
+    suspend fun registro(@Body pedido: PedidoRegistro): RespuestaRegistro
+
+    /** Vuelve a mandar el link de activación (responde igual aunque el email no exista). */
+    @POST("auth/activar/reenviar/")
+    suspend fun reenviarActivacion(@Body pedido: PedidoEmail): Detalle
 
     @GET("auth/me/")
     suspend fun yo(): Usuario

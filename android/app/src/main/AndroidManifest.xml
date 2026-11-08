@@ -43,6 +43,15 @@
 
                 <data android:scheme="drivly" android:host="pago-resultado" />
             </intent-filter>
+            <!-- Botón "Abrir Drivly" de la página de cuenta activada: sólo abre la app en el login -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="drivly" android:host="cuenta-activada" />
+            </intent-filter>
         </activity>
 
         <!-- Notificaciones push de Drivly (Firebase Cloud Messaging) -->

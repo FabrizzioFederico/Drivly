@@ -36,7 +36,9 @@ def usuario_desde_google(info: dict, rol_solicitado: str = Rol.CONDUCTOR) -> Usu
         usuario = Usuario.objects.select_for_update().filter(email=email).first()
         if usuario is not None:
             usuario.google_sub = sub
-            campos = ["google_sub"]
+            # Google verificó el email: si la cuenta común estaba pendiente de activación, queda activada
+            usuario.email_verificado = True
+            campos = ["google_sub", "email_verificado"]
             if usuario.has_usable_password():
                 # El registro con contraseña no verifica el email: si alguien creó la cuenta con un email ajeno,
                 # el dueño real (que Google sí verificó) no debe compartirla con esa contraseña.
