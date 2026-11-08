@@ -32,6 +32,18 @@ def _aislar_de_mercado_pago(settings, monkeypatch):
     monkeypatch.setattr("pagos.oauth.requests.post", _SDKBloqueado)
 
 
+def _datacar_bloqueado(*args, **kwargs):
+    raise AssertionError("Un test intentó consultar DataCar de verdad (gasta créditos): usá el fixture `datacar_real`.")
+
+
+@pytest.fixture(autouse=True)
+def _aislar_de_datacar(settings, monkeypatch):
+    """Cada consulta real a DataCar gasta un crédito: los tests usan el simulador aunque el .env diga lo contrario."""
+    settings.DATACAR_MOCK = True
+    settings.DATACAR_API_KEY = ""
+    monkeypatch.setattr("integraciones.datacar.requests.get", _datacar_bloqueado)
+
+
 @pytest.fixture
 def crear_usuario(db):
     def _crear(email, rol=Rol.CONDUCTOR, **extra):

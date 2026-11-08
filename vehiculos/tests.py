@@ -67,25 +67,42 @@ def test_sin_dato_de_datacar_queda_para_declarar(conductor, cliente, patente, re
     r = alta(cliente, conductor, patente)
     assert r.data["categoria"] is None and r.data["requiere_declaracion"] and r.data["puede_declarar"]
     assert Vehiculo.objects.get(id=r.data["id"]).consultas.first().resultado == resultado
+    assert r.data["consulta_datacar"] == resultado  # la app arma el mensaje con esto
 
 
 def test_declarar_y_luego_datacar_prevalece(conductor, cliente, settings, monkeypatch):
     c = cliente(conductor)
     vid = alta(cliente, conductor, "ERR123").data["id"]
-    r = c.post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "AUTO"}, format="json")
-    assert r.status_code == 200 and r.data["categoria_origen"] == "DECLARADA"
+    r = c.post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "CAMIONETA"}, format="json")
+    assert r.status_code == 200 and r.data["categoria"] == "CAMIONETA" and r.data["categoria_origen"] == "DECLARADA"
 
-    # DataCar vuelve y dice SUV: reemplaza la declaración
+    # DataCar vuelve y dice sedán: reemplaza la declaración y pasa a pagar como auto
     from integraciones import datacar
-    monkeypatch.setattr(datacar.SimuladorDataCar, "consultar", lambda self, p: datacar.ResultadoPatente("SUV"))
+    monkeypatch.setattr(datacar.SimuladorDataCar, "consultar", lambda self, p: datacar.ResultadoPatente("Sedán"))
     r = c.post(f"/api/vehiculos/{vid}/revalidar/")
-    assert r.data["categoria"] == "CAMIONETA" and r.data["categoria_origen"] == "DATACAR"
+    assert r.data["categoria"] == "AUTO" and r.data["categoria_origen"] == "DATACAR"
+
+
+@pytest.mark.parametrize("patente", ["ERR123", "AB123ZZ", "XX123AB"])
+def test_sin_datacar_no_se_puede_declarar_auto(conductor, cliente, patente):
+    """Un vivo no puede pagar como auto con una camioneta: "auto" sólo sale de DataCar."""
+    vid = alta(cliente, conductor, patente).data["id"]
+    r = cliente(conductor).post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "AUTO"}, format="json")
+    assert r.status_code == 400 and "camioneta" in str(r.data["categoria"][0])
+    assert Vehiculo.objects.get(id=vid).categoria is None
 
 
 def test_no_se_puede_declarar_si_datacar_resolvio(conductor, cliente):
     vid = alta(cliente, conductor, "AB123CD").data["id"]
-    r = cliente(conductor).post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "AUTO"}, format="json")
+    r = cliente(conductor).post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "CAMIONETA"}, format="json")
     assert r.status_code == 400
+
+
+def test_no_se_vuelve_a_declarar(conductor, cliente):
+    c = cliente(conductor)
+    vid = alta(cliente, conductor, "ERR123").data["id"]
+    assert c.post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "CAMIONETA"}, format="json").status_code == 200
+    assert c.post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "CAMIONETA"}, format="json").status_code == 400
 
 
 def test_no_se_declara_moto(conductor, cliente):
@@ -94,25 +111,15 @@ def test_no_se_declara_moto(conductor, cliente):
     assert r.status_code == 400
 
 
-def test_dos_correcciones_bloquean_la_declaracion(conductor, cliente):
-    """CP-29 y regla 3: con dos correcciones del playero la cuenta ya no declara."""
-    c = cliente(conductor)
-    for patente in ("ERR111", "ERR222"):
-        vid = alta(cliente, conductor, patente).data["id"]
-        c.post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "AUTO"}, format="json")
-        assert verificar_por_playero(Vehiculo.objects.get(id=vid), "CAMIONETA") is True
-    conductor.refresh_from_db()
-    assert conductor.correcciones_categoria == 2
-    vid = alta(cliente, conductor, "ERR333").data["id"]
-    assert c.post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "AUTO"}, format="json").status_code == 403
-
-
-def test_verificacion_confirma_sin_contar_correccion(conductor, cliente):
+def test_verificacion_del_playero(conductor, cliente):
+    """Capa 4: el playero confirma o baja a auto una camioneta declarada."""
     vid = alta(cliente, conductor, "ERR123").data["id"]
-    cliente(conductor).post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "AUTO"}, format="json")
-    assert verificar_por_playero(Vehiculo.objects.get(id=vid), "AUTO") is False
-    conductor.refresh_from_db()
-    assert conductor.correcciones_categoria == 0
+    cliente(conductor).post(f"/api/vehiculos/{vid}/declarar/", {"categoria": "CAMIONETA"}, format="json")
+    v = Vehiculo.objects.get(id=vid)
+    assert verificar_por_playero(v, "CAMIONETA") is False
+    assert verificar_por_playero(v, "AUTO") is True
+    v.refresh_from_db()
+    assert v.categoria == "AUTO" and v.categoria_origen == "VERIFICADA"
 
 
 def test_patente_duplicada(conductor, crear_usuario, cliente):

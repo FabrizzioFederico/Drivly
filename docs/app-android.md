@@ -49,7 +49,7 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | Método | Ruta | Uso |
 |---|---|---|
 | GET/POST | `vehiculos/` | Listar / registrar patente (la categoría sale de DataCar, no se elige). Incluye `marca`, `modelo`, `anio` y `tipo` de DataCar |
-| POST | `vehiculos/{id}/declarar/` | `{ "categoria": "AUTO" \| "CAMIONETA" }` si DataCar no respondió |
+| POST | `vehiculos/{id}/declarar/` | `{ "categoria": "CAMIONETA" }` si DataCar no la resolvió. "Auto" sólo sale de DataCar: así nadie paga como auto con una camioneta |
 | POST | `vehiculos/{id}/revalidar/` | Vuelve a consultar DataCar |
 | GET | `garajes/disponibles/?lat&lng&radio&inicio&fin&modalidad` | Búsqueda (sólo garajes que pueden cobrar) |
 | GET | `garajes/{id}/cercanos/?inicio&fin&modalidad` | Alternativas si el garaje está lleno |

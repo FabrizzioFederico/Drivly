@@ -9,13 +9,16 @@ class VehiculoSerializer(serializers.ModelSerializer):
     patente = serializers.CharField(max_length=12)
     puede_declarar = serializers.SerializerMethodField()
     requiere_declaracion = serializers.SerializerMethodField()
+    # Resultado de la última consulta a DataCar (OK, NO_ENCONTRADA, ERROR) o null si no se consultó (motos):
+    # la app explica por qué no hay categoría.
+    consulta_datacar = serializers.SerializerMethodField()
 
     class Meta:
         model = Vehiculo
         fields = [
             "id", "patente", "categoria", "categoria_origen", "estado_validacion",
             "requiere_declaracion", "puede_declarar", "validado_en", "creado_en",
-            "marca", "modelo", "anio", "tipo",
+            "marca", "modelo", "anio", "tipo", "consulta_datacar",
         ]
         # La categoría nunca se manda en el alta: se declara aparte y sólo si DataCar no la resolvió.
         # Marca, modelo, año y tipo los completa DataCar.
@@ -35,6 +38,14 @@ class VehiculoSerializer(serializers.ModelSerializer):
     def get_requiere_declaracion(self, vehiculo):
         return vehiculo.categoria is None
 
+    def get_consulta_datacar(self, vehiculo):
+        ultima = vehiculo.consultas.first()  # ordenadas de la más nueva a la más vieja
+        return ultima.resultado if ultima else None
+
 
 class DeclararCategoriaSerializer(serializers.Serializer):
-    categoria = serializers.ChoiceField(choices=[Categoria.AUTO, Categoria.CAMIONETA])
+    # Sólo camioneta: "auto" lo determina DataCar (si no, cualquiera pagaría como auto)
+    categoria = serializers.ChoiceField(
+        choices=[Categoria.CAMIONETA],
+        error_messages={"invalid_choice": "Sin dato del registro automotor sólo se puede reservar como camioneta."},
+    )

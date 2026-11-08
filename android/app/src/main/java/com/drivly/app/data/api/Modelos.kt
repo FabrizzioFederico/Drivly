@@ -48,6 +48,9 @@ data class Tokens(val access: String, val refresh: String? = null)
 @Serializable
 data class Pagina<T>(val count: Int = 0, val results: List<T> = emptyList())
 
+/** Sin dato de DataCar el conductor sólo puede declarar camioneta (la tarifa más cara). */
+private const val SIN_DATO_CAMIONETA = "Sin ese dato sólo podés reservar con la tarifa de camioneta."
+
 @Serializable
 data class Vehiculo(
     val id: String,
@@ -61,9 +64,25 @@ data class Vehiculo(
     val modelo: String = "",
     val anio: Int? = null,
     val tipo: String = "",
+    /** Última consulta a DataCar: OK, NO_ENCONTRADA o ERROR (null si no se consultó, como en las motos). */
+    @SerialName("consulta_datacar") val consultaDatacar: String? = null,
 ) {
     val validado get() = estadoValidacion == "VALIDADO"
     val rechazado get() = estadoValidacion == "RECHAZADO"
+
+    /** Por qué todavía no tiene categoría, para mostrarle al conductor. */
+    val motivoSinCategoria: String
+        get() = when (consultaDatacar) {
+            "NO_ENCONTRADA" ->
+                "La patente $patente no figura en el registro automotor. Revisá que esté bien escrita. " +
+                    SIN_DATO_CAMIONETA
+            "ERROR" ->
+                "No pudimos consultar el registro automotor en este momento. Reintentá en unos minutos. " +
+                    SIN_DATO_CAMIONETA
+            "OK" -> "La patente $patente figura como ${tipo.lowercase().ifBlank { "otro tipo de vehículo" }}" +
+                (descripcion?.let { " ($it)" } ?: "") + ": no es auto, camioneta ni moto. " + SIN_DATO_CAMIONETA
+            else -> "Todavía no pudimos validar la patente $patente con el registro automotor. " + SIN_DATO_CAMIONETA
+        }
 
     /** "RENAULT KANGOO II · 2020", o null si DataCar no devolvió datos. */
     val descripcion: String?

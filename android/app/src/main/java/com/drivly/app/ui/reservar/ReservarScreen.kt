@@ -129,10 +129,7 @@ class ReservarViewModel(
         val nuevo = api.agregarVehiculo(PedidoVehiculo(patente))
         vehiculos = vehiculos + nuevo
         if (nuevo.validado) elegir(nuevo.id)
-        else error = nuevo.descripcion?.let {
-            "La patente ${nuevo.patente} figura como ${nuevo.tipo.lowercase()} ($it): no es auto, camioneta ni moto. " +
-                "Si es tu vehículo, declarala en la lista."
-        } ?: "No pudimos validar la categoría de ${nuevo.patente}. Reintentá o declarala en la lista de vehículos."
+        else error = nuevo.motivoSinCategoria
     }
 
     fun revalidar(v: Vehiculo) = tarea { actualizar(api.revalidarVehiculo(v.id)) }
@@ -142,7 +139,7 @@ class ReservarViewModel(
     private fun actualizar(v: Vehiculo) {
         vehiculos = vehiculos.map { if (it.id == v.id) v else it }
         if (v.validado) elegir(v.id)
-        else error = "Seguimos sin poder validar ${v.patente}."
+        else error = v.motivoSinCategoria
     }
 
     /** CU-04: retiene el lugar 5 minutos mientras el conductor paga. */
@@ -326,13 +323,14 @@ private fun SeccionVehiculos(vm: ReservarViewModel) {
 /** Regla 3: si DataCar no resolvió la categoría se reintenta, o el conductor la declara y el playero la verifica. */
 @Composable
 private fun SinValidar(v: Vehiculo, vm: ReservarViewModel) {
-    Text(if (v.rechazado) "No figura en el registro oficial." else "Todavía no pudimos validarlo con el registro oficial.",
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    Text(v.motivoSinCategoria, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         TextButton(onClick = { vm.revalidar(v) }, enabled = !vm.ocupado) { Text("Reintentar") }
+        // Sin dato del registro sólo se puede reservar como camioneta: así nadie paga como auto con una camioneta
         if (v.puedeDeclarar) {
-            TextButton(onClick = { vm.declarar(v, "AUTO") }, enabled = !vm.ocupado) { Text("Es auto") }
-            TextButton(onClick = { vm.declarar(v, "CAMIONETA") }, enabled = !vm.ocupado) { Text("Es camioneta") }
+            TextButton(onClick = { vm.declarar(v, "CAMIONETA") }, enabled = !vm.ocupado) {
+                Text("Reservar como camioneta")
+            }
         }
     }
 }
