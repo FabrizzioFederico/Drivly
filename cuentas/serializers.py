@@ -1,3 +1,5 @@
+from django.contrib.auth import password_validation
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .models import Rol, Usuario
@@ -31,3 +33,31 @@ class GoogleLoginSerializer(serializers.Serializer):
     rol = serializers.ChoiceField(
         choices=[Rol.CONDUCTOR, Rol.ADMIN_GARAJE], default=Rol.CONDUCTOR, required=False
     )
+
+
+class RegistroSerializer(serializers.Serializer):
+    """Cuenta común desde la app: siempre nace como conductor (el admin la pasa a playero si hace falta)."""
+
+    nombre = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate_email(self, email):
+        email = email.strip().lower()
+        if Usuario.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError("Ya existe una cuenta con ese email. Ingresá con tu contraseña o con Google.")
+        return email
+
+    def validate(self, datos):
+        try:
+            password_validation.validate_password(
+                datos["password"], Usuario(email=datos["email"], nombre=datos["nombre"])
+            )
+        except DjangoValidationError as error:
+            raise serializers.ValidationError({"password": list(error.messages)})
+        return datos
+
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, trim_whitespace=False)

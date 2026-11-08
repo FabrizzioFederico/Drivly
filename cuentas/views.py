@@ -1,3 +1,4 @@
+from django.contrib.auth import authenticate
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser
@@ -7,11 +8,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from . import perfil
-from .models import Usuario
+from .models import Rol, Usuario
 from .serializers import (
     ConfirmacionEmailSerializer,
     GoogleLoginSerializer,
+    LoginSerializer,
     PedidoCambioEmailSerializer,
+    RegistroSerializer,
     UsuarioSerializer,
 )
 from .services import usuario_desde_google, verificar_token_google
@@ -21,6 +24,52 @@ def tokens_para(usuario):
     refresh = RefreshToken.for_user(usuario)
     refresh["rol"] = usuario.rol  # el frontend decide qué panel mostrar sin otra llamada
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
+def respuesta_de_sesion(usuario, estado=status.HTTP_200_OK):
+    return Response({**tokens_para(usuario), "user": UsuarioSerializer(usuario).data}, status=estado)
+
+
+class RegistroView(APIView):
+    """POST /api/auth/registro/ {nombre, email, password} -> {access, refresh, user}. Siempre CONDUCTOR."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "auth"
+
+    def post(self, request):
+        datos = RegistroSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        usuario = Usuario.objects.create_user(
+            email=datos.validated_data["email"],
+            password=datos.validated_data["password"],
+            nombre=datos.validated_data["nombre"].strip(),
+            rol=Rol.CONDUCTOR,
+        )
+        return respuesta_de_sesion(usuario, status.HTTP_201_CREATED)
+
+
+class LoginView(APIView):
+    """POST /api/auth/login/ {email, password} -> {access, refresh, user} (mismo formato que Google)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "auth"
+
+    def post(self, request):
+        datos = LoginSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        # authenticate() rechaza contraseñas inutilizables (cuentas sólo Google) y usuarios inactivos
+        usuario = authenticate(
+            request,
+            email=datos.validated_data["email"].strip().lower(),
+            password=datos.validated_data["password"],
+        )
+        if usuario is None:
+            # 401 explícito: AuthenticationFailed sin autenticador configurado sale como 403
+            return Response({"detail": "Email o contraseña incorrectos.", "code": "CREDENCIALES_INVALIDAS"},
+                            status=status.HTTP_401_UNAUTHORIZED)
+        return respuesta_de_sesion(usuario)
 
 
 class GoogleLoginView(APIView):

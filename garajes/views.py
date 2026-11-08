@@ -172,10 +172,10 @@ class GarajeViewSet(viewsets.ModelViewSet):
         datos.is_valid(raise_exception=True)
         with transaction.atomic():
             playero = Usuario.objects.filter(email=datos.validated_data["email"]).first()
-            if playero:  # playero que quedó sin garaje: se reasigna
-                playero.garaje, playero.is_active = garaje, True
+            if playero:  # conductor que pasa a playero, o playero que quedó sin garaje
+                playero.rol, playero.garaje, playero.is_active = Rol.PLAYERO, garaje, True
                 playero.nombre = datos.validated_data.get("nombre") or playero.nombre
-                playero.save(update_fields=["garaje", "is_active", "nombre"])
+                playero.save(update_fields=["rol", "garaje", "is_active", "nombre"])
             else:
                 playero = Usuario.objects.create_user(
                     email=datos.validated_data["email"],
@@ -189,8 +189,9 @@ class GarajeViewSet(viewsets.ModelViewSet):
     def quitar_playero(self, request, pk=None, usuario_id=None):
         garaje = self.get_object()
         playero = get_object_or_404(garaje.playeros, id=usuario_id)
-        playero.garaje, playero.is_active = None, False
-        playero.save(update_fields=["garaje", "is_active"])
+        # Vuelve a ser conductor: puede seguir usando la app, pero ya no opera el garaje
+        playero.rol, playero.garaje = Rol.CONDUCTOR, None
+        playero.save(update_fields=["rol", "garaje"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

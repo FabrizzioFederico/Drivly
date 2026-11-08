@@ -27,7 +27,7 @@ export default function EquipoPanel({ garajeId }) {
       await garajesService.addPlayero(garajeId, form);
       setForm({ email: '', nombre: '' });
       await load();
-      setMsg({ ok: true, text: 'Playero agregado. Entra desde la app de Drivly con Google, usando ese email.' });
+      setMsg({ ok: true, text: 'Playero agregado. Al abrir la app de Drivly con ese email ve la pantalla del playero.' });
     } catch (err) {
       setMsg({ ok: false, text: err.fields?.email?.[0] ?? err.message });
     } finally { setAdding(false); }
@@ -42,7 +42,7 @@ export default function EquipoPanel({ garajeId }) {
 
   return (
     <>
-      <Encabezado titulo="Equipo" detalle="Los playeros entran a la app con Google usando el email registrado aquí." />
+      <Encabezado titulo="Equipo" detalle="Si la persona ya tiene cuenta en la app, ingresá su email y pasa a ser playero. Si no, que entre a la app con Google usando ese email. Al quitarla vuelve a ser conductor." />
       <Aviso msg={msg} />
 
       <Seccion titulo="Agregar playero" sx={{ maxWidth: 760 }}>

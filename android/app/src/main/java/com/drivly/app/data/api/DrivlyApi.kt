@@ -21,6 +21,14 @@ interface DrivlyApi {
     @POST("auth/google/")
     suspend fun googleLogin(@Body pedido: PedidoGoogleLogin): RespuestaLogin
 
+    /** Cuenta común: email y contraseña. */
+    @POST("auth/login/")
+    suspend fun login(@Body pedido: PedidoLogin): RespuestaLogin
+
+    /** Crea la cuenta siempre como conductor; el admin la pasa a playero desde el portal web. */
+    @POST("auth/registro/")
+    suspend fun registro(@Body pedido: PedidoRegistro): RespuestaLogin
+
     @GET("auth/me/")
     suspend fun yo(): Usuario
 

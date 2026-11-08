@@ -28,6 +28,8 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
 | POST | `auth/google/` | `{ "id_token": "<Credential Manager>" }` | `{ access, refresh, user }` — crea la cuenta como CONDUCTOR |
+| POST | `auth/registro/` | `{ nombre, email, password }` | igual; la cuenta siempre se crea como CONDUCTOR (201) |
+| POST | `auth/login/` | `{ email, password }` | igual; 401 `CREDENCIALES_INVALIDAS` si no coinciden |
 | POST | `auth/dev-login/` | `{ "rol": "CONDUCTOR" }` | igual (sólo con `DEBUG=True`) |
 | POST | `auth/refresh/` | `{ "refresh": "..." }` | `{ access, refresh }` — el refresh rota: guardar el nuevo |
 | GET/PATCH | `auth/me/` | `{ nombre?, genero?, telefono? }` | usuario logueado (`foto` es una ruta relativa: `/api/media/...`) |
@@ -36,13 +38,17 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | POST | `auth/me/email/confirmar/` | `{ codigo }` | aplica el cambio; vence en 15 min y admite 5 intentos |
 
 - Header: `Authorization: Bearer <access>`. El access dura 15 min y el refresh 7 días.
+- Registro y login con contraseña admiten 10 intentos por minuto por IP (después responden 429).
+- Para pasar una cuenta a playero, el admin carga su email en Equipo (portal web). Al abrirse, la app consulta
+  `auth/me/` y actualiza el rol guardado. Si una cuenta con contraseña entra después con Google, la contraseña
+  deja de valer: el registro no verifica el email y así se evita que alguien se adueñe de un email ajeno.
 - El client ID de Android tiene que estar en `GOOGLE_OAUTH_CLIENT_IDS` del backend (separado por comas, junto al web).
 
 ## Endpoints del conductor
 
 | Método | Ruta | Uso |
 |---|---|---|
-| GET/POST | `vehiculos/` | Listar / registrar patente (la categoría sale de DataCar, no se elige) |
+| GET/POST | `vehiculos/` | Listar / registrar patente (la categoría sale de DataCar, no se elige). Incluye `marca`, `modelo`, `anio` y `tipo` de DataCar |
 | POST | `vehiculos/{id}/declarar/` | `{ "categoria": "AUTO" \| "CAMIONETA" }` si DataCar no respondió |
 | POST | `vehiculos/{id}/revalidar/` | Vuelve a consultar DataCar |
 | GET | `garajes/disponibles/?lat&lng&radio&inicio&fin&modalidad` | Búsqueda (sólo garajes que pueden cobrar) |

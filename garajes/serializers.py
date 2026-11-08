@@ -76,17 +76,35 @@ class GarajePublicoSerializer(serializers.ModelSerializer):
         return round(valor) if valor is not None else None
 
 
+ESTADOS_RESERVA_ACTIVA = ("HOLD", "CONFIRMADA", "EN_CURSO", "CON_DEUDA")
+
+
 class PlayeroSerializer(serializers.ModelSerializer):
-    """Alta de playero por su admin. El playero entra después con Google usando ese email."""
+    """
+    Alta de playero por su admin, por email:
+      - cuenta de conductor existente -> pasa a playero (si no tiene reservas activas ni deuda);
+      - email nuevo -> se crea la cuenta y la persona entra con Google usando ese email.
+    """
 
     class Meta:
         model = Usuario
         fields = ["id", "email", "nombre", "is_active"]
         read_only_fields = ["id", "is_active"]
+        # Sin el validador de unicidad del modelo: validate_email decide si una cuenta existente puede pasar a playero
+        extra_kwargs = {"email": {"validators": []}}
 
     def validate_email(self, email):
         email = email.lower()
         existente = Usuario.objects.filter(email=email).first()
-        if existente and not (existente.rol == Rol.PLAYERO and existente.garaje_id is None):
-            raise serializers.ValidationError("Ese email ya pertenece a otra cuenta de Drivly.")
+        if existente is None:
+            return email
+        if existente.rol == Rol.PLAYERO and existente.garaje_id is not None:
+            raise serializers.ValidationError("Esa persona ya es playero de un garaje.")
+        if existente.rol == Rol.ADMIN_GARAJE:
+            raise serializers.ValidationError("Ese email es de un administrador: no se puede pasar a playero.")
+        # Como playero perdería acceso a su ticket o a pagar su deuda desde la app
+        if existente.reservas.filter(estado__in=ESTADOS_RESERVA_ACTIVA).exists():
+            raise serializers.ValidationError(
+                "Tiene reservas activas o una deuda pendiente como conductor. Pasalo a playero cuando las cierre."
+            )
         return email

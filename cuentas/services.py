@@ -36,7 +36,13 @@ def usuario_desde_google(info: dict, rol_solicitado: str = Rol.CONDUCTOR) -> Usu
         usuario = Usuario.objects.select_for_update().filter(email=email).first()
         if usuario is not None:
             usuario.google_sub = sub
-            usuario.save(update_fields=["google_sub"])
+            campos = ["google_sub"]
+            if usuario.has_usable_password():
+                # El registro con contraseña no verifica el email: si alguien creó la cuenta con un email ajeno,
+                # el dueño real (que Google sí verificó) no debe compartirla con esa contraseña.
+                usuario.set_unusable_password()
+                campos.append("password")
+            usuario.save(update_fields=campos)
     if usuario is None:
         if rol_solicitado not in ROLES_AUTOREGISTRO:
             raise PermissionDenied("Los playeros deben ser dados de alta por el administrador del garaje.")

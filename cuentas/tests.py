@@ -169,3 +169,72 @@ def test_codigo_vencido(conductor, cliente):
 def test_email_de_otra_cuenta(conductor, admin_garaje, cliente):
     r = cliente(conductor).post("/api/auth/me/email/", {"email": admin_garaje.email}, format="json")
     assert r.status_code == 400 and not mail.outbox
+
+
+# --- Cuenta común (email + contraseña) ---
+
+@pytest.fixture(autouse=False)
+def sin_limite(settings):
+    from django.core.cache import cache
+    cache.clear()  # el throttle de auth guarda los intentos en la caché
+
+
+def test_registro_crea_conductor_y_devuelve_sesion(db, cliente, sin_limite):
+    r = cliente().post("/api/auth/registro/", {"nombre": " Ana ", "email": "Ana@Mail.com",
+                                               "password": "una-clave-larga-9", "rol": "ADMIN_GARAJE"}, format="json")
+    assert r.status_code == 201 and r.data["access"] and r.data["refresh"]
+    assert r.data["user"]["rol"] == "CONDUCTOR" and r.data["user"]["email"] == "ana@mail.com"
+    u = Usuario.objects.get(email="ana@mail.com")
+    assert u.nombre == "Ana" and u.check_password("una-clave-larga-9")
+
+
+@pytest.mark.parametrize("password", ["corta", "12345678901", "password123"])
+def test_registro_rechaza_contrasenias_debiles(db, cliente, sin_limite, password):
+    r = cliente().post("/api/auth/registro/", {"nombre": "Ana", "email": "ana@mail.com", "password": password},
+                       format="json")
+    assert r.status_code == 400 and "password" in r.data
+    assert not Usuario.objects.exists()
+
+
+def test_registro_rechaza_email_existente(conductor, cliente, sin_limite):
+    r = cliente().post("/api/auth/registro/", {"nombre": "X", "email": conductor.email.upper(),
+                                               "password": "una-clave-larga-9"}, format="json")
+    assert r.status_code == 400 and "email" in r.data
+
+
+def test_login_con_contrasenia(conductor, cliente, sin_limite):
+    r = cliente().post("/api/auth/login/", {"email": "LUCIA@test.com", "password": "clave-segura-123"}, format="json")
+    assert r.status_code == 200 and r.data["user"]["rol"] == "CONDUCTOR" and r.data["access"]
+
+
+@pytest.mark.parametrize("email, password", [("lucia@test.com", "mala"), ("nadie@test.com", "clave-segura-123")])
+def test_login_incorrecto(conductor, cliente, sin_limite, email, password):
+    r = cliente().post("/api/auth/login/", {"email": email, "password": password}, format="json")
+    assert r.status_code == 401 and r.data["detail"] == "Email o contraseña incorrectos."
+
+
+def test_login_cuenta_solo_google_no_entra_con_contrasenia(db, cliente, sin_limite):
+    services.usuario_desde_google(INFO)
+    r = cliente().post("/api/auth/login/", {"email": "nuevo@gmail.com", "password": ""}, format="json")
+    assert r.status_code in (400, 401)
+
+
+def test_login_cuenta_desactivada(conductor, cliente, sin_limite):
+    Usuario.objects.update(is_active=False)
+    r = cliente().post("/api/auth/login/", {"email": "lucia@test.com", "password": "clave-segura-123"}, format="json")
+    assert r.status_code == 401
+
+
+def test_login_limita_intentos(conductor, cliente, sin_limite):
+    c = cliente()
+    for _ in range(10):
+        c.post("/api/auth/login/", {"email": "lucia@test.com", "password": "mala"}, format="json")
+    r = c.post("/api/auth/login/", {"email": "lucia@test.com", "password": "clave-segura-123"}, format="json")
+    assert r.status_code == 429
+
+
+def test_google_sobre_cuenta_con_contrasenia_la_anula(db):
+    """Alguien registró el email ajeno con contraseña: cuando entra el dueño real con Google, esa clave deja de servir."""
+    Usuario.objects.create_user(email="nuevo@gmail.com", password="clave-del-intruso-1", rol=Rol.CONDUCTOR)
+    u = services.usuario_desde_google(INFO)
+    assert u.google_sub == "google-123" and not u.has_usable_password()

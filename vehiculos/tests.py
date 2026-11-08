@@ -25,6 +25,10 @@ def test_normalizar():
 @pytest.mark.parametrize("clasificacion, categoria", [
     ("Sedán", "AUTO"), ("SUV", "CAMIONETA"), ("Pick-up", "CAMIONETA"), ("pick up", "CAMIONETA"),
     ("Furgón", "CAMIONETA"), ("Motocicleta", "MOTO"), ("Casa rodante", None),
+    # Tipos del registro automotor como los devuelve DataCar
+    ("MOTOCICLETA", "MOTO"), ("FURGON", "CAMIONETA"), ("SEDAN 4 PUERTAS", "AUTO"),
+    ("RURAL 5 PUERTAS", "AUTO"), ("PICK-UP CABINA DOBLE", "CAMIONETA"), ("TODO TERRENO", "CAMIONETA"),
+    ("FURGONETA", "CAMIONETA"), ("CAMION", None), ("", None),
 ])
 def test_traduccion_de_clasificacion_datacar(clasificacion, categoria):
     assert categoria_desde_clasificacion(clasificacion) == categoria
@@ -128,3 +132,102 @@ def test_admin_no_accede_a_vehiculos(admin_garaje, cliente):
 def test_db_impide_categoria_sin_origen(conductor):
     with pytest.raises(IntegrityError):
         Vehiculo.objects.create(conductor=conductor, patente="AB123CD", categoria="AUTO", estado_validacion="VALIDADO")
+
+
+# --- Integración real con DataCar (sin red: se simula requests.get) ---
+
+class _Respuesta:
+    def __init__(self, status, cuerpo, reason="OK"):
+        self.status_code, self._cuerpo, self.reason = status, cuerpo, reason
+        self.ok = 200 <= status < 300
+
+    def json(self):
+        if isinstance(self._cuerpo, Exception):
+            raise self._cuerpo
+        return self._cuerpo
+
+
+@pytest.fixture
+def datacar_real(settings, monkeypatch):
+    """Configura la integración real y devuelve las llamadas hechas a requests.get."""
+    from integraciones import datacar
+
+    settings.DATACAR_MOCK = False
+    settings.DATACAR_API_URL = ""
+    settings.DATACAR_API_KEY = "dca-clave-de-prueba"
+    llamadas, respuesta = [], {}
+
+    def falso_get(url, headers, timeout):
+        llamadas.append({"url": url, "headers": headers, "timeout": timeout})
+        if isinstance(respuesta["valor"], Exception):
+            raise respuesta["valor"]
+        return respuesta["valor"]
+
+    monkeypatch.setattr(datacar.requests, "get", falso_get)
+    return llamadas, respuesta
+
+
+def _exito(tipo):
+    return _Respuesta(200, {"success": True, "data": {"id": {
+        "brand": "RENAULT", "model": "KANGOO II", "year": 2020, "type": tipo, "domestic": True,
+    }}, "balance": 99})
+
+
+def test_datacar_real_arma_la_consulta_y_traduce(datacar_real, conductor, cliente):
+    llamadas, respuesta = datacar_real
+    respuesta["valor"] = _exito("FURGON")
+    r = alta(cliente, conductor, "AB123CD")
+    assert r.data["categoria"] == "CAMIONETA" and r.data["categoria_origen"] == "DATACAR"
+    assert llamadas == [{
+        "url": "https://api.datacar.com.ar/vehicle/ab123cd",
+        "headers": {"Authorization": "bearer dca-clave-de-prueba", "Accept": "application/json"},
+        "timeout": 3,
+    }]
+    consulta = Vehiculo.objects.get(id=r.data["id"]).consultas.first()
+    assert consulta.resultado == "OK" and consulta.respuesta["data"]["id"]["type"] == "FURGON"
+    # el conductor ve qué vehículo encontró DataCar
+    assert (r.data["marca"], r.data["modelo"], r.data["anio"], r.data["tipo"]) == ("RENAULT", "KANGOO II", 2020, "FURGON")
+
+
+def test_datacar_real_tipo_sin_traduccion_igual_muestra_el_vehiculo(datacar_real, conductor, cliente):
+    datacar_real[1]["valor"] = _exito("SEMIRREMOLQUE")
+    r = alta(cliente, conductor, "AB123CD")
+    assert r.data["categoria"] is None and r.data["requiere_declaracion"]
+    assert r.data["marca"] == "RENAULT" and r.data["tipo"] == "SEMIRREMOLQUE"
+
+
+def test_datacar_real_key_sin_prefijo_usa_basic(datacar_real, settings):
+    from integraciones.datacar import DataCarGateway
+
+    llamadas, respuesta = datacar_real
+    settings.DATACAR_API_KEY = "usuario:clave"
+    settings.DATACAR_API_URL = "https://otra.api/v2"
+    respuesta["valor"] = _exito("SEDAN 4 PUERTAS")
+    assert DataCarGateway().consultar("AB123CD").categoria == "AUTO"
+    assert llamadas[0]["url"] == "https://otra.api/v2/vehicle/ab123cd"
+    assert llamadas[0]["headers"]["Authorization"] == "basic usuario:clave"
+
+
+@pytest.mark.parametrize("valor, resultado", [
+    (_Respuesta(404, {"error": {"code": 404, "message": "Not found"}}, "Not Found"), "NO_ENCONTRADA"),
+    (_Respuesta(200, {"success": False, "data": {}}), "NO_ENCONTRADA"),
+    (_Respuesta(401, {"error": {"code": 401, "message": "Invalid token"}}, "Unauthorized"), "ERROR"),
+    (_Respuesta(402, {"error": {"code": 402, "message": "Sin saldo"}}, "Payment Required"), "ERROR"),
+    (_Respuesta(500, ValueError("no es JSON"), "Server Error"), "ERROR"),
+    (__import__("requests").Timeout(), "ERROR"),
+    (__import__("requests").ConnectionError(), "ERROR"),
+])
+def test_datacar_real_fallas_pasan_a_declaracion(datacar_real, conductor, cliente, valor, resultado):
+    """CP-16 con la integración real: nada bloquea el alta."""
+    datacar_real[1]["valor"] = valor
+    r = alta(cliente, conductor, "AB123CD")
+    assert r.status_code == 201
+    assert r.data["categoria"] is None and r.data["requiere_declaracion"]
+    assert Vehiculo.objects.get(id=r.data["id"]).consultas.first().resultado == resultado
+
+
+def test_datacar_real_sin_key_no_consulta(datacar_real, settings, conductor, cliente):
+    llamadas, _ = datacar_real
+    settings.DATACAR_API_KEY = ""
+    r = alta(cliente, conductor, "AB123CD")
+    assert r.data["requiere_declaracion"] and llamadas == []

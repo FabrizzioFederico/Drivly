@@ -56,10 +56,26 @@ data class Vehiculo(
     @SerialName("estado_validacion") val estadoValidacion: String,
     /** Si DataCar no la resolvió, el conductor declara auto o camioneta (regla 3). */
     @SerialName("puede_declarar") val puedeDeclarar: Boolean = false,
+    /** Lo que encontró DataCar para esa patente; vacío si no respondió. */
+    val marca: String = "",
+    val modelo: String = "",
+    val anio: Int? = null,
+    val tipo: String = "",
 ) {
     val validado get() = estadoValidacion == "VALIDADO"
     val rechazado get() = estadoValidacion == "RECHAZADO"
+
+    /** "RENAULT KANGOO II · 2020", o null si DataCar no devolvió datos. */
+    val descripcion: String?
+        get() = listOf(marca, modelo).filter { it.isNotBlank() }.joinToString(" ").ifBlank { null }
+            ?.let { nombre -> anio?.let { "$nombre · $it" } ?: nombre }
 }
+
+@Serializable
+data class PedidoLogin(val email: String, val password: String)
+
+@Serializable
+data class PedidoRegistro(val nombre: String, val email: String, val password: String)
 
 @Serializable
 data class PedidoCategoria(val categoria: String)

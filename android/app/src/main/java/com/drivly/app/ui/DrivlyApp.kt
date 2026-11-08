@@ -89,6 +89,15 @@ fun DrivlyApp(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Unit) {
     val logueado by app.sesion.logueado.collectAsStateWithLifecycle(initialValue = null)
     val rol by app.sesion.rol.collectAsStateWithLifecycle(initialValue = null)
 
+    // El rol guardado puede estar viejo si el admin pasó la cuenta a playero o la quitó del equipo
+    LaunchedEffect(logueado) {
+        if (logueado == true) {
+            runCatching { app.api.yo() }.getOrNull()?.rol
+                ?.takeIf { it == "CONDUCTOR" || it == "PLAYERO" }
+                ?.let { app.sesion.guardarRol(it) }
+        }
+    }
+
     when {
         logueado == null || rol == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         logueado == false -> LoginScreen()

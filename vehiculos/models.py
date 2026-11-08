@@ -63,6 +63,11 @@ class Vehiculo(models.Model):
     )
     validado_en = models.DateTimeField(null=True, blank=True)
     creado_en = models.DateTimeField(auto_now_add=True)
+    # Datos informativos que devuelve DataCar: se muestran al conductor para que confirme que es su vehículo
+    marca = models.CharField(max_length=60, blank=True, default="")
+    modelo = models.CharField(max_length=120, blank=True, default="")
+    anio = models.PositiveSmallIntegerField(null=True, blank=True)
+    tipo = models.CharField(max_length=60, blank=True, default="")  # clasificación tal como la manda DataCar
 
     class Meta:
         ordering = ["-creado_en"]

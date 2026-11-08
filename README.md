@@ -58,4 +58,4 @@ cd frontend && npm run build
 
 ## Estado
 
-La integración real con DataCar y el despliegue en producción están pendientes. En desarrollo la categoría del vehículo sale de un simulador (`DATACAR_MOCK=True`).
+El despliegue en producción está pendiente. La categoría del vehículo sale de DataCar (`DATACAR_MOCK=False` y `DATACAR_API_KEY`); en desarrollo conviene el simulador (`DATACAR_MOCK=True`), que no gasta saldo.

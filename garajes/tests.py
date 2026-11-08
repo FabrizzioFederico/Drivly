@@ -103,13 +103,50 @@ def test_alta_y_baja_de_playero(admin_garaje, garaje, cliente, conductor):
     assert playero.rol == Rol.PLAYERO and playero.garaje == garaje
     # el playero sólo ve su garaje
     assert [g["id"] for g in cliente(playero).get("/api/garajes/").data["results"]] == [str(garaje.id)]
-    # no se puede usar el email de un conductor
-    r = c.post(f"/api/garajes/{garaje.id}/playeros/", {"email": conductor.email}, format="json")
+    # ya es playero de un garaje: no se puede volver a agregar
+    r = c.post(f"/api/garajes/{garaje.id}/playeros/", {"email": "pepe@test.com"}, format="json")
     assert r.status_code == 400
-    # baja
+    # el email de un admin tampoco
+    assert c.post(f"/api/garajes/{garaje.id}/playeros/", {"email": admin_garaje.email}, format="json").status_code == 400
+    # baja: vuelve a ser conductor y puede seguir usando la app
     assert c.delete(f"/api/garajes/{garaje.id}/playeros/{playero.id}/").status_code == 204
     playero.refresh_from_db()
-    assert playero.garaje is None and playero.is_active is False
+    assert playero.garaje is None and playero.rol == Rol.CONDUCTOR and playero.is_active
+
+
+def test_conductor_existente_pasa_a_playero(admin_garaje, garaje, cliente, conductor):
+    """Cuenta común creada en la app: el admin la pasa a playero con su email."""
+    c = cliente(admin_garaje)
+    r = c.post(f"/api/garajes/{garaje.id}/playeros/", {"email": conductor.email}, format="json")
+    assert r.status_code == 201
+    conductor.refresh_from_db()
+    assert conductor.rol == Rol.PLAYERO and conductor.garaje == garaje
+    assert cliente(conductor).get("/api/auth/me/").data["rol"] == "PLAYERO"
+    # se lo quita y se lo vuelve a agregar, con el email en otro formato
+    assert c.delete(f"/api/garajes/{garaje.id}/playeros/{conductor.id}/").status_code == 204
+    assert c.post(f"/api/garajes/{garaje.id}/playeros/", {"email": conductor.email.upper()},
+                  format="json").status_code == 201
+
+
+def test_conductor_con_reserva_activa_no_pasa_a_playero(admin_garaje, garaje, cliente, conductor):
+    from datetime import timedelta
+
+    from django.utils import timezone
+    from django.db.backends.postgresql.psycopg_any import DateTimeTZRange
+
+    from reservas.models import Reserva
+    from vehiculos.models import Vehiculo
+
+    ahora = timezone.now()
+    vehiculo = Vehiculo.objects.create(conductor=conductor, patente="AB123CD", categoria="AUTO",
+                                       categoria_origen="DATACAR", estado_validacion="VALIDADO")
+    Reserva.objects.create(conductor=conductor, garaje=garaje, vehiculo=vehiculo, estado="CONFIRMADA", monto=4000,
+                           categoria_cobrada="AUTO",
+                           periodo=DateTimeTZRange(ahora + timedelta(hours=1), ahora + timedelta(hours=2)))
+    r = cliente(admin_garaje).post(f"/api/garajes/{garaje.id}/playeros/", {"email": conductor.email}, format="json")
+    assert r.status_code == 400 and "reservas activas" in r.data["email"][0]
+    conductor.refresh_from_db()
+    assert conductor.rol == Rol.CONDUCTOR
 
 
 def test_tarifas_del_garaje_se_leen_y_reemplazan(admin_garaje, garaje, cliente):

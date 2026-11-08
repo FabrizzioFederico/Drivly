@@ -372,7 +372,15 @@ private fun SelectorVehiculo(vehiculos: List<Vehiculo>, actual: Vehiculo?, alEle
         DropdownMenu(expanded = abierto, onDismissRequest = { abierto = false }) {
             vehiculos.forEach { v ->
                 DropdownMenuItem(
-                    text = { Text("${v.patente} · ${v.categoria?.lowercase()?.replaceFirstChar { it.uppercase() } ?: ""}") },
+                    text = {
+                        Column {
+                            Text("${v.patente} · ${v.categoria?.lowercase()?.replaceFirstChar { it.uppercase() } ?: ""}")
+                            v.descripcion?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    },
                     onClick = { abierto = false; alElegir(v) },
                 )
             }

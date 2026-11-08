@@ -129,7 +129,10 @@ class ReservarViewModel(
         val nuevo = api.agregarVehiculo(PedidoVehiculo(patente))
         vehiculos = vehiculos + nuevo
         if (nuevo.validado) elegir(nuevo.id)
-        else error = "No pudimos validar la categoría de ${nuevo.patente}. Reintentá o declarala en la lista de vehículos."
+        else error = nuevo.descripcion?.let {
+            "La patente ${nuevo.patente} figura como ${nuevo.tipo.lowercase()} ($it): no es auto, camioneta ni moto. " +
+                "Si es tu vehículo, declarala en la lista."
+        } ?: "No pudimos validar la categoría de ${nuevo.patente}. Reintentá o declarala en la lista de vehículos."
     }
 
     fun revalidar(v: Vehiculo) = tarea { actualizar(api.revalidarVehiculo(v.id)) }
@@ -285,9 +288,14 @@ private fun SeccionVehiculos(vm: ReservarViewModel) {
                 ) {
                     RadioButton(selected = vm.elegido == v.id, onClick = null, enabled = v.validado)
                     Spacer(Modifier.padding(4.dp))
-                    Text(v.patente, style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMono,
-                        fontWeight = FontWeight.Bold))
-                    Spacer(Modifier.weight(1f))
+                    Column(Modifier.weight(1f)) {
+                        Text(v.patente, style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMono,
+                            fontWeight = FontWeight.Bold))
+                        v.descripcion?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     Text(v.categoria ?: "Sin categoría", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

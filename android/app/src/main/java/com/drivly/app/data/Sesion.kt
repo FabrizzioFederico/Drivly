@@ -43,6 +43,11 @@ class Sesion(private val context: Context) {
         context.almacen.edit { it[claveNombre] = nombre }
     }
 
+    /** El admin puede pasar un conductor a playero (o al revés): la app lo toma al volver a abrirse. */
+    suspend fun guardarRol(rol: String) {
+        context.almacen.edit { it[claveRol] = rol }
+    }
+
     suspend fun cerrar() {
         accessEnMemoria = null
         context.almacen.edit { it.clear() }

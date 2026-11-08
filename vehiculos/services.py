@@ -54,9 +54,13 @@ def validar_vehiculo(vehiculo: Vehiculo, gateway=None) -> Vehiculo:
             ConsultaPatente.objects.create(
                 vehiculo=vehiculo, resultado=ConsultaPatente.Resultado.OK, respuesta=resultado.respuesta
             )
+            # Se guardan aunque el tipo no tenga traducción: el conductor ve qué vehículo encontró DataCar
+            vehiculo.marca, vehiculo.modelo = resultado.marca, resultado.modelo
+            vehiculo.anio, vehiculo.tipo = resultado.anio, resultado.clasificacion[:60]
             if resultado.categoria:  # DataCar prevalece sobre una declaración
                 _asignar(vehiculo, resultado.categoria, OrigenCategoria.DATACAR)
-    vehiculo.save(update_fields=["categoria", "categoria_origen", "estado_validacion", "validado_en"])
+    vehiculo.save(update_fields=["categoria", "categoria_origen", "estado_validacion", "validado_en",
+                                 "marca", "modelo", "anio", "tipo"])
     return vehiculo
 
 
