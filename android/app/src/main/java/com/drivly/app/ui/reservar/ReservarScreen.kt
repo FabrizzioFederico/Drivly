@@ -365,6 +365,26 @@ private fun ResumenHold(reserva: Reserva, alVencer: () -> Unit) {
     }
 }
 
+/** Cómo se llegó al total: estadía, primera hora + fracciones, o sólo fracciones (tarifas viejas). */
+internal fun detallePrecio(c: Cotizacion): String? {
+    val fracciones = c.fracciones ?: return null
+    val precioFraccion = c.precioFraccion ?: return null
+    val minutos = c.fraccionMin ?: return null
+    c.topeAplicado?.let { tope ->
+        val horas = if (tope == "24h") "24 h" else "12 h"
+        return "Estadía de hasta $horas: es lo máximo que cobra el garaje" +
+            (c.sinTope?.let { " (por fracción serían ${ars(it)})" } ?: "") + "."
+    }
+    c.precioPrimeraHora?.let { primera ->
+        val minimo = 60 / minutos
+        val extra = fracciones - minimo
+        return if (extra <= 0) "Primera hora completa: ${ars(primera)}"
+        else "Primera hora ${ars(primera)} + $extra × ${ars(precioFraccion)} (cada $minutos min)"
+    }
+    return "$fracciones × ${ars(precioFraccion)} (fracciones de $minutos min)" +
+        if (c.minimoAplicado) " · incluye el mínimo del garaje" else ""
+}
+
 /** Total estimado antes de retener: el monto definitivo se congela al crear el hold (regla 3). */
 @Composable
 private fun PrecioEstimado(c: Cotizacion) {
@@ -375,12 +395,8 @@ private fun PrecioEstimado(c: Cotizacion) {
                 Text("Total estimado", style = MaterialTheme.typography.titleMedium)
                 Text(ars(c.total), style = MaterialTheme.typography.headlineSmall)
             }
-            if (c.fracciones != null && c.precioFraccion != null && c.fraccionMin != null) {
-                Text(
-                    "${c.fracciones} × ${ars(c.precioFraccion)} (fracciones de ${c.fraccionMin} min)" +
-                        if (c.minimoAplicado) " · incluye el mínimo del garaje" else "",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            detallePrecio(c)?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text("Sin cargos extra: la comisión de Drivly la paga el garaje.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

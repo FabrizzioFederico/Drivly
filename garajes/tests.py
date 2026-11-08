@@ -26,6 +26,76 @@ def test_cotizar_por_fraccion(garaje, minutos, esperado):
     assert t.cotizar(INICIO, INICIO + timedelta(minutes=minutos)) == Decimal(esperado)
 
 
+def _tarifa_caba(garaje, **extra):
+    """Como el garaje del playero entrevistado: $9.000 la hora, $750 cada 5 min, estadía 12 h $36.000, 24 h $45.000."""
+    datos = {"precio_primera_hora": Decimal("9000"), "precio_fraccion": Decimal("750"), "fraccion_min": 5,
+             "minimo_fracciones": 12, "tope_12h": Decimal("36000"), "tope_24h": Decimal("45000"), **extra}
+    return Tarifa.objects.create(garaje=garaje, categoria=Categoria.AUTO, **datos)
+
+
+@pytest.mark.parametrize("minutos, esperado", [
+    (20, 9000),      # la primera hora se cobra completa
+    (60, 9000),
+    (65, 9750),      # 1 h + una fracción de 5 min
+    (90, 13500),     # 1 h + 6 fracciones
+    (180, 27000),    # 3 h todavía es menos que la estadía
+    (240, 36000),    # 4 h = $36.000: llega al tope de 12 h
+    (540, 36000),    # 9 h: sigue en $36.000 (sin tope serían $81.000)
+    (720, 36000),
+    (721, 45000),    # pasadas las 12 h rige la estadía de 24 h
+    (1440, 45000),
+])
+def test_cotizar_con_primera_hora_y_estadia(garaje, minutos, esperado):
+    t = _tarifa_caba(garaje)
+    assert t.cotizar(INICIO, INICIO + timedelta(minutes=minutos)) == Decimal(esperado)
+    assert t.precio_hora == Decimal("9000")
+
+
+def test_cotizar_sin_estadia_no_tiene_tope(garaje):
+    t = _tarifa_caba(garaje, tope_12h=None, tope_24h=None)
+    assert t.cotizar(INICIO, INICIO + timedelta(hours=9)) == Decimal("81000")
+
+
+@pytest.mark.parametrize("campos, error", [
+    ({"tope_12h": Decimal("5000")}, "tope_12h"),                            # menos que la primera hora
+    ({"tope_24h": Decimal("30000")}, "tope_24h"),                           # menos que la de 12 h
+    ({"tope_12h": Decimal("0")}, "tope_12h"),
+])
+def test_estadias_incoherentes(garaje, campos, error):
+    t = Tarifa(garaje=garaje, categoria=Categoria.AUTO, precio_primera_hora=Decimal("9000"),
+               precio_fraccion=Decimal("750"), fraccion_min=5, minimo_fracciones=12,
+               tope_12h=Decimal("36000"), tope_24h=Decimal("45000"))
+    for campo, valor in campos.items():
+        setattr(t, campo, valor)
+    with pytest.raises(ValidationError) as e:
+        t.full_clean()
+    assert error in e.value.message_dict
+
+
+def test_abono_no_lleva_estadia(garaje):
+    t = Tarifa(garaje=garaje, categoria=Categoria.AUTO, modalidad=Modalidad.MENSUAL,
+               precio_periodo=Decimal("220500"), tope_12h=Decimal("36000"))
+    with pytest.raises(ValidationError):
+        t.full_clean()
+
+
+def test_cotizacion_de_la_app_muestra_la_estadia(garaje, cliente, crear_usuario):
+    from vehiculos.models import Vehiculo
+
+    _tarifa_caba(garaje)
+    u = crear_usuario("estadia@test.com")
+    v = Vehiculo.objects.create(conductor=u, patente="AB123CD", categoria="AUTO",
+                                categoria_origen="DATACAR", estado_validacion="VALIDADO")
+    inicio = (datetime.now() + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0).astimezone()
+    r = cliente(u).get("/api/reservas/cotizar/", {
+        "garaje": str(garaje.id), "vehiculo": str(v.id), "modalidad": "HORA",
+        "inicio": inicio.isoformat(), "fin": (inicio + timedelta(hours=9)).isoformat(),
+    })
+    assert r.status_code == 200, r.data
+    assert Decimal(r.data["total"]) == Decimal("36000") and r.data["tope_aplicado"] == "12h"
+    assert Decimal(r.data["sin_tope"]) == Decimal("81000") and Decimal(r.data["precio_primera_hora"]) == Decimal("9000")
+
+
 def test_cotizar_abono_es_precio_fijo(garaje):
     t = Tarifa.objects.create(garaje=garaje, categoria=Categoria.AUTO, modalidad=Modalidad.MENSUAL,
                               precio_periodo=Decimal("150000"))
@@ -159,6 +229,19 @@ def test_tarifas_del_garaje_se_leen_y_reemplazan(admin_garaje, garaje, cliente):
     assert c.put(url, [hora, mensual], format="json").status_code == 200
     assert c.put(url, [hora], format="json").status_code == 200  # lo que no viene deja de ofrecerse
     assert [t["modalidad"] for t in c.get(url).data] == ["HORA"]
+
+
+def test_tarifas_con_estadia_desde_el_portal(admin_garaje, garaje, cliente):
+    """Lo que manda el panel web: primera hora, fracción de 5 min y las dos estadías."""
+    c = cliente(admin_garaje)
+    url = f"/api/garajes/{garaje.id}/tarifas/"
+    hora = {"categoria": "AUTO", "modalidad": "HORA", "precio_primera_hora": 9000, "precio_fraccion": 750,
+            "fraccion_min": 5, "minimo_fracciones": 12, "tope_12h": 36000, "tope_24h": 45000, "precio_periodo": None}
+    assert c.put(url, [hora], format="json").status_code == 200
+    t = c.get(url).data[0]
+    assert (Decimal(t["precio_primera_hora"]), Decimal(t["tope_12h"]), Decimal(t["tope_24h"])) == (9000, 36000, 45000)
+    r = c.put(url, [{**hora, "tope_24h": 20000}], format="json")
+    assert r.status_code == 400 and garaje.tarifas.get().tope_24h == 45000
 
 
 def test_tarifa_invalida_no_borra_las_existentes(admin_garaje, garaje, cliente):

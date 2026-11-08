@@ -153,6 +153,11 @@ data class Cotizacion(
     @SerialName("fraccion_min") val fraccionMin: Int? = null,
     @SerialName("precio_fraccion") val precioFraccion: String? = null,
     @SerialName("minimo_aplicado") val minimoAplicado: Boolean = false,
+    /** Precio de la primera hora completa, si el garaje la cobra aparte de las fracciones. */
+    @SerialName("precio_primera_hora") val precioPrimeraHora: String? = null,
+    /** "12h" o "24h" si se cobró la estadía (más barata que las fracciones); `sinTope` es lo que habría salido. */
+    @SerialName("tope_aplicado") val topeAplicado: String? = null,
+    @SerialName("sin_tope") val sinTope: String? = null,
 )
 
 @Serializable

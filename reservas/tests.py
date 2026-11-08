@@ -401,7 +401,7 @@ def test_disponibles_y_cercanos(cliente, conductor_v, garaje, admin_garaje):
     q = {"lat": "-34.5885", "lng": "-58.4305", "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
     r = c.get("/api/garajes/disponibles/", q).data
     assert {g["nombre"]: g["lugares_libres"] for g in r} == {"Palermo": 0, "Vecino": 5}
-    assert r[0]["nombre"] == "Palermo" and r[0]["precio_unidad"] == "/ 15 min"
+    assert r[0]["nombre"] == "Palermo" and r[0]["precio_unidad"] == "/ hora"
     # Sólo Palermo ofrece mensual
     r = c.get("/api/garajes/disponibles/", {**q, "modalidad": "MENSUAL"}).data
     assert [g["nombre"] for g in r] == ["Palermo"] and Decimal(r[0]["precio_desde"]) == Decimal("150000")
@@ -478,9 +478,9 @@ def test_disponibles_con_vehiculo_muestra_el_precio_de_su_categoria(cliente, con
     u, v = conductor_v
     q = {"lat": "-34.5885", "lng": "-58.4305", "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
     sin_vehiculo = cliente(u).get("/api/garajes/disponibles/", q).data
-    assert Decimal(sin_vehiculo[0]["precio_desde"]) == Decimal("500")  # el más barato de todas las categorías
+    assert Decimal(sin_vehiculo[0]["precio_desde"]) == Decimal("2000")  # 1 h de moto (4 × $500): la más barata
     con_vehiculo = cliente(u).get("/api/garajes/disponibles/", {**q, "vehiculo": str(v.id)}).data
-    assert Decimal(con_vehiculo[0]["precio_desde"]) == Decimal("1000")  # lo que paga su auto
+    assert Decimal(con_vehiculo[0]["precio_desde"]) == Decimal("4000")  # 1 h de su auto (4 × $1.000)
 
 
 def test_disponibles_oculta_garajes_sin_tarifa_para_el_vehiculo(cliente, conductor_v, garaje, admin_garaje):
@@ -501,7 +501,7 @@ def test_disponibles_ignora_vehiculo_ajeno_o_invalido(cliente, conductor_v, gara
     q = {"lat": "-34.5885", "lng": "-58.4305", "inicio": manana(14).isoformat(), "fin": manana(15).isoformat()}
     for vehiculo in (str(v_otro.id), "no-es-un-uuid"):
         r = cliente(u).get("/api/garajes/disponibles/", {**q, "vehiculo": vehiculo})
-        assert r.status_code == 200 and Decimal(r.data[0]["precio_desde"]) == Decimal("500")
+        assert r.status_code == 200 and Decimal(r.data[0]["precio_desde"]) == Decimal("2000")
 
 
 def test_sin_cupo_sugiere_solo_garajes_con_tarifa_para_el_vehiculo(cliente, conductor_v, garaje, admin_garaje):

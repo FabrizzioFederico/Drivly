@@ -21,8 +21,8 @@ class TarifaSerializer(serializers.ModelSerializer):
         model = Tarifa
         fields = [
             "id", "garaje", "categoria", "modalidad",
-            "precio_fraccion", "fraccion_min", "minimo_fracciones", "precio_periodo",
-            "actualizado_en",
+            "precio_fraccion", "fraccion_min", "minimo_fracciones", "precio_primera_hora", "tope_12h", "tope_24h",
+            "precio_periodo", "actualizado_en",
         ]
         read_only_fields = ["id", "actualizado_en"]
 
@@ -58,7 +58,8 @@ class GarajeSerializer(serializers.ModelSerializer):
 class TarifaPublicaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tarifa
-        fields = ["categoria", "modalidad", "precio_fraccion", "fraccion_min", "minimo_fracciones", "precio_periodo"]
+        fields = ["categoria", "modalidad", "precio_fraccion", "fraccion_min", "minimo_fracciones",
+                  "precio_primera_hora", "tope_12h", "tope_24h", "precio_periodo"]
 
 
 class GarajePublicoSerializer(serializers.ModelSerializer):

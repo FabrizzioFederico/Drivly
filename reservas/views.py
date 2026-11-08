@@ -74,6 +74,9 @@ class ReservaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
             "fracciones": detalle.get("fracciones"), "fraccion_min": detalle.get("fraccion_min"),
             "precio_fraccion": str(detalle["precio_fraccion"]) if "precio_fraccion" in detalle else None,
             "minimo_aplicado": detalle.get("minimo_aplicado", False),
+            "precio_primera_hora": str(detalle["precio_primera_hora"]) if detalle.get("precio_primera_hora") else None,
+            "tope_aplicado": detalle.get("tope_aplicado"),
+            "sin_tope": str(detalle["sin_tope"]) if "sin_tope" in detalle else None,
         })
 
     @action(detail=True, methods=["post"])

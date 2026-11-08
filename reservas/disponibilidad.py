@@ -10,7 +10,7 @@ from garajes.models import Garaje, Tarifa
 from .models import Modalidad
 from .ocupacion import lugares_libres
 
-UNIDAD = {Modalidad.HORA: "/ 15 min", Modalidad.SEMANAL: "/ semana", Modalidad.MENSUAL: "/ mes", Modalidad.ANUAL: "/ año"}
+UNIDAD = {Modalidad.HORA: "/ hora", Modalidad.SEMANAL: "/ semana", Modalidad.MENSUAL: "/ mes", Modalidad.ANUAL: "/ año"}
 
 
 def que_pueden_cobrar(garajes):
@@ -34,11 +34,16 @@ def garajes_con_disponibilidad(lat, lng, ini, fin, modalidad=Modalidad.HORA, rad
     radio = radio or settings.DRIVLY_RADIO_CERCANOS_M
     lat, lng = Decimal(str(lat)), Decimal(str(lng))
     lat_min, lat_max, lng_min, lng_max = caja_alrededor(lat, lng, radio)
-    campo_precio = "precio_fraccion" if modalidad == Modalidad.HORA else "precio_periodo"
     tarifas = Tarifa.objects.filter(modalidad=modalidad)
     if categoria:
         tarifas = tarifas.filter(categoria=categoria)
-    precios = dict(tarifas.values_list("garaje_id").annotate(p=Min(campo_precio)))
+    if modalidad == Modalidad.HORA:
+        # El "desde" es lo que cuesta una hora (primera hora o fracciones mínimas), no el precio de una fracción
+        precios = {}
+        for t in tarifas:
+            precios[t.garaje_id] = min(precios.get(t.garaje_id, t.precio_hora), t.precio_hora)
+    else:
+        precios = dict(tarifas.values_list("garaje_id").annotate(p=Min("precio_periodo")))
     candidatos = que_pueden_cobrar(Garaje.objects.filter(
         activo=True, id__in=precios.keys(), lat__range=(lat_min, lat_max), lng__range=(lng_min, lng_max)
     ))

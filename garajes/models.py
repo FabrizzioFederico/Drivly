@@ -85,7 +85,10 @@ class Garaje(models.Model):
 class Tarifa(models.Model):
     """
     Una tarifa por garaje, categoría y modalidad.
-    HORA usa fracciones (precio_fraccion, fraccion_min, minimo_fracciones).
+    HORA cobra como los garajes de CABA: la primera hora completa (las `minimo_fracciones` iniciales, a
+    `precio_primera_hora` si está cargado) y después por fracción (`precio_fraccion` cada `fraccion_min`).
+    Nunca supera la estadía: `tope_12h` para hasta 12 h y `tope_24h` para hasta 24 h
+    (ej.: $9.000 la hora y estadía de $36.000 -> 9 h cuestan $36.000, no $81.000).
     Los abonos usan un precio fijo por período (precio_periodo).
     """
 
@@ -96,6 +99,11 @@ class Tarifa(models.Model):
     precio_fraccion = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     fraccion_min = models.PositiveIntegerField(null=True, blank=True)
     minimo_fracciones = models.PositiveIntegerField(null=True, blank=True)
+    # Precio del bloque mínimo (la primera hora). Vacío: minimo_fracciones × precio_fraccion.
+    precio_primera_hora = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    # Estadía: lo máximo que se cobra por hasta 12 h y por hasta 24 h. Vacío: sin tope.
+    tope_12h = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    tope_24h = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     precio_periodo = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 
@@ -111,7 +119,9 @@ class Tarifa(models.Model):
                     Q(modalidad="HORA", precio_fraccion__gt=0, fraccion_min__gt=0,
                       minimo_fracciones__gte=1, precio_periodo__isnull=True)
                     | (~Q(modalidad="HORA") & Q(precio_periodo__gt=0, precio_fraccion__isnull=True,
-                                                fraccion_min__isnull=True, minimo_fracciones__isnull=True))
+                                                fraccion_min__isnull=True, minimo_fracciones__isnull=True,
+                                                precio_primera_hora__isnull=True, tope_12h__isnull=True,
+                                                tope_24h__isnull=True))
                 ),
             ),
         ]
@@ -127,10 +137,22 @@ class Tarifa(models.Model):
                     errores[campo] = "Obligatorio para la tarifa por hora."
             if self.precio_periodo is not None:
                 errores["precio_periodo"] = "Sólo se usa en abonos."
+            if not errores:
+                for campo in ("precio_primera_hora", "tope_12h", "tope_24h"):
+                    valor = getattr(self, campo)
+                    if valor is not None and valor <= 0:
+                        errores[campo] = "Tiene que ser mayor a cero, o quedar vacío."
+            if not errores:
+                primera = self.precio_base(self.minimo_fracciones * self.fraccion_min)
+                if self.tope_12h is not None and self.tope_12h < primera:
+                    errores["tope_12h"] = "La estadía de 12 h no puede costar menos que la primera hora."
+                if self.tope_24h is not None and self.tope_24h < (self.tope_12h or primera):
+                    errores["tope_24h"] = "La estadía de 24 h no puede costar menos que la de 12 h."
         else:
             if not self.precio_periodo:
                 errores["precio_periodo"] = "Obligatorio para abonos."
-            for campo in ("precio_fraccion", "fraccion_min", "minimo_fracciones"):
+            for campo in ("precio_fraccion", "fraccion_min", "minimo_fracciones",
+                          "precio_primera_hora", "tope_12h", "tope_24h"):
                 if getattr(self, campo) is not None:
                     errores[campo] = "Sólo se usa en la tarifa por hora."
         if errores:
@@ -140,11 +162,36 @@ class Tarifa(models.Model):
         """Cantidad de fracciones a cobrar: redondeo hacia arriba y nunca menos del mínimo."""
         return max(self.minimo_fracciones, math.ceil(minutos / self.fraccion_min))
 
+    def precio_base(self, minutos: int) -> Decimal:
+        """Primera hora + fracciones siguientes, sin aplicar la estadía."""
+        fracciones = self.fracciones(minutos)
+        if self.precio_primera_hora is None:
+            return self.precio_fraccion * fracciones
+        return self.precio_primera_hora + self.precio_fraccion * (fracciones - self.minimo_fracciones)
+
+    def tope(self, minutos: int):
+        """La estadía que corresponde a esa duración: ("12h" | "24h", monto) o None si no hay tope."""
+        topes = []
+        if self.tope_12h is not None and minutos <= 12 * 60:
+            topes.append(("12h", self.tope_12h))
+        if self.tope_24h is not None and minutos <= 24 * 60:
+            topes.append(("24h", self.tope_24h))
+        return min(topes, key=lambda t: t[1]) if topes else None
+
+    def precio_por_minutos(self, minutos: int) -> Decimal:
+        base = self.precio_base(minutos)
+        tope = self.tope(minutos)
+        return min(base, tope[1]) if tope else base
+
+    @property
+    def precio_hora(self) -> Decimal:
+        """Lo que cuesta una hora: es el "desde" que ve el conductor en el mapa."""
+        return self.precio_por_minutos(60)
+
     def cotizar(self, inicio, fin) -> Decimal:
         """Precio total de una reserva. El monto se congela en la reserva al crearla."""
         if fin <= inicio:
             raise ValueError("El fin debe ser posterior al inicio.")
         if self.modalidad != Modalidad.HORA:
             return self.precio_periodo
-        minutos = math.ceil((fin - inicio).total_seconds() / 60)
-        return self.precio_fraccion * self.fracciones(minutos)
+        return self.precio_por_minutos(math.ceil((fin - inicio).total_seconds() / 60))

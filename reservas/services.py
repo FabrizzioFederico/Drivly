@@ -61,10 +61,14 @@ def desglose(tarifa: Tarifa, inicio, fin) -> dict:
                 "cargo_servicio": 0, "total": total}
     minutos = -(-int((fin - inicio).total_seconds()) // 60)
     fracciones = tarifa.fracciones(minutos)
+    base = tarifa.precio_base(minutos)
     return {
         "modalidad": Modalidad.HORA, "precio_fraccion": tarifa.precio_fraccion, "fraccion_min": tarifa.fraccion_min,
         "fracciones": fracciones, "minimo_fracciones": tarifa.minimo_fracciones,
         "minimo_aplicado": fracciones > -(-minutos // tarifa.fraccion_min),
+        "precio_primera_hora": tarifa.precio_primera_hora,
+        # Si se cobró la estadía en lugar de las fracciones: "12h" o "24h"; `sin_tope` es lo que habría salido
+        "tope_aplicado": tarifa.tope(minutos)[0] if total < base else None, "sin_tope": base,
         # La comisión de Drivly la paga el garaje vía split de Mercado Pago: el conductor no paga cargo extra.
         "subtotal": total, "cargo_servicio": 0, "total": total,
     }

@@ -14,17 +14,39 @@ import { Aviso, Encabezado, Leyenda, Seccion } from './comun';
 const CATEGORIAS = ['AUTO', 'MOTO', 'CAMIONETA'];
 const ABONOS = ['SEMANAL', 'MENSUAL', 'ANUAL'];
 const ABONO_LABEL = { SEMANAL: 'Semanal', MENSUAL: 'Mensual', ANUAL: 'Anual' };
-const MINIMOS = [15, 30, 60, 120]; // minutos mínimos cobrados = minimo_fracciones × 15
 const SALIDAS = [60, 90, 120, 180, 240];
 const minLabel = (m) => (m >= 60 ? `${m / 60} h` : `${m} min`);
 const iguales = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const FRACCION = 5; // como los garajes de CABA: primera hora completa y después cada 5 min
+const montoONulo = (v) => (v === '' || Number(v) <= 0 ? null : Number(v));
+
+/** Mismo cálculo que el backend (Tarifa.precio_por_minutos): primera hora + fracciones, sin pasar la estadía. */
+function precioPorMinutos(h, minutos) {
+  const base = Number(h.primera_hora) + Math.max(0, Math.ceil((minutos - 60) / FRACCION)) * Number(h.cada_5);
+  const topes = [];
+  if (h.tope_12h !== '' && minutos <= 720) topes.push(Number(h.tope_12h));
+  if (h.tope_24h !== '' && minutos <= 1440) topes.push(Number(h.tope_24h));
+  return Math.min(base, ...topes);
+}
 
 /** Pasa de las filas del backend a la forma de los formularios. */
 function desdeFilas(filas) {
   const hora = CATEGORIAS.map((categoria) => {
     const t = filas.find((f) => f.categoria === categoria && f.modalidad === 'HORA');
-    // Number: el backend manda "340.00" y en los campos alcanza con 340
-    return { categoria, precio_fraccion: Number(t?.precio_fraccion ?? 0), minimo_min: (t?.minimo_fracciones ?? 1) * (t?.fraccion_min ?? 15) };
+    // Number: el backend manda "340.00" y en los campos alcanza con 340.
+    // Las tarifas viejas (fracción de 15 min, sin primera hora) se pasan al esquema nuevo con el mismo precio por hora.
+    const fraccion = t?.fraccion_min ?? FRACCION;
+    const porFraccion = Number(t?.precio_fraccion ?? 0);
+    const primera = t?.precio_primera_hora != null
+      ? Number(t.precio_primera_hora)
+      : porFraccion * Math.max(t?.minimo_fracciones ?? 1, Math.ceil(60 / fraccion));
+    return {
+      categoria,
+      primera_hora: primera,
+      cada_5: Math.round((porFraccion * FRACCION) / fraccion),
+      tope_12h: t?.tope_12h != null ? Number(t.tope_12h) : '',
+      tope_24h: t?.tope_24h != null ? Number(t.tope_24h) : '',
+    };
   });
   const abonos = Object.fromEntries(CATEGORIAS.map((c) => [c, Object.fromEntries(ABONOS.map((m) => {
     const t = filas.find((f) => f.categoria === c && f.modalidad === m);
@@ -36,8 +58,12 @@ function desdeFilas(filas) {
 /** Y de vuelta: una fila por categoría y modalidad. Un abono sin precio deja de ofrecerse. */
 function aFilas({ hora, abonos }) {
   const filas = hora
-    .filter((h) => Number(h.precio_fraccion) > 0)
-    .map((h) => ({ categoria: h.categoria, modalidad: 'HORA', precio_fraccion: h.precio_fraccion, fraccion_min: 15, minimo_fracciones: h.minimo_min / 15, precio_periodo: null }));
+    .filter((h) => Number(h.primera_hora) > 0 && Number(h.cada_5) > 0)
+    .map((h) => ({
+      categoria: h.categoria, modalidad: 'HORA', precio_primera_hora: Number(h.primera_hora), precio_fraccion: Number(h.cada_5),
+      fraccion_min: FRACCION, minimo_fracciones: 60 / FRACCION, tope_12h: montoONulo(h.tope_12h), tope_24h: montoONulo(h.tope_24h),
+      precio_periodo: null,
+    }));
   CATEGORIAS.forEach((c) => ABONOS.forEach((m) => {
     const precio = Number(abonos[c][m]);
     if (precio > 0) filas.push({ categoria: c, modalidad: m, precio_fraccion: null, fraccion_min: null, minimo_fracciones: null, precio_periodo: precio });
@@ -177,14 +203,6 @@ function CampoMonto({ etiqueta, value, onChange, placeholder }) {
   );
 }
 
-function SelectMinimo({ etiqueta, value, onChange }) {
-  return (
-    <TextField select size="small" fullWidth value={value} onChange={(e) => onChange(Number(e.target.value))} slotProps={{ htmlInput: { 'aria-label': etiqueta } }}>
-      {MINIMOS.map((m) => <MenuItem key={m} value={m}>{minLabel(m)}</MenuItem>)}
-    </TextField>
-  );
-}
-
 /** En el celular las tablas pasan a una tarjeta por categoría. */
 function TarjetaCategoria({ titulo, modificado, children }) {
   return (
@@ -209,33 +227,58 @@ function FilaCategoria({ titulo, modificado, children }) {
   );
 }
 
+const COLUMNAS_HORA = [
+  { k: 'primera_hora', titulo: 'Primera hora', obligatorio: true },
+  { k: 'cada_5', titulo: 'Cada 5 min', obligatorio: true },
+  { k: 'tope_12h', titulo: 'Estadía hasta 12 h' },
+  { k: 'tope_24h', titulo: 'Estadía 24 h' },
+];
+
+/** Errores que se ven antes de guardar: la estadía no puede ser más barata que lo anterior. */
+function erroresHora(h) {
+  const e = {};
+  if (h.tope_12h !== '' && Number(h.tope_12h) < Number(h.primera_hora)) e.tope_12h = 'Menor que la primera hora';
+  const piso = h.tope_12h !== '' ? Number(h.tope_12h) : Number(h.primera_hora);
+  if (h.tope_24h !== '' && Number(h.tope_24h) < piso) e.tope_24h = h.tope_12h !== '' ? 'Menor que la de 12 h' : 'Menor que la primera hora';
+  return e;
+}
+
 function TablaHora({ tarifas, base, setHora, movil }) {
   const cambio = (i, k) => tarifas.hora[i][k] !== base.hora[i][k];
+  const campo = (t, i, col, errs) => (
+    <>
+      <CampoMonto
+        etiqueta={`${col.titulo} ${CATEGORIA_LABEL[t.categoria]}`} value={t[col.k]} placeholder={col.obligatorio ? undefined : 'Sin tope'}
+        onChange={(v) => setHora(i, col.k, col.obligatorio && v === '' ? 0 : v)}
+      />
+      {errs[col.k] && <FormHelperText error>{errs[col.k]}</FormHelperText>}
+    </>
+  );
   if (movil) {
-    return tarifas.hora.map((t, i) => (
-      <TarjetaCategoria key={t.categoria} titulo={CATEGORIA_LABEL[t.categoria]}>
-        <Box>
-          <Etiqueta modificado={cambio(i, 'precio_fraccion')}>Precio por fracción</Etiqueta>
-          <CampoMonto etiqueta={`Precio por fracción ${CATEGORIA_LABEL[t.categoria]}`} value={t.precio_fraccion} onChange={(v) => setHora(i, 'precio_fraccion', v === '' ? 0 : v)} />
-        </Box>
-        <Box>
-          <Etiqueta modificado={cambio(i, 'minimo_min')}>Mínimo cobrado</Etiqueta>
-          <SelectMinimo etiqueta={`Mínimo cobrado ${CATEGORIA_LABEL[t.categoria]}`} value={t.minimo_min} onChange={(v) => setHora(i, 'minimo_min', v)} />
-        </Box>
-      </TarjetaCategoria>
-    ));
+    return tarifas.hora.map((t, i) => {
+      const errs = erroresHora(t);
+      return (
+        <TarjetaCategoria key={t.categoria} titulo={CATEGORIA_LABEL[t.categoria]}>
+          {COLUMNAS_HORA.map((col) => (
+            <Box key={col.k}><Etiqueta modificado={cambio(i, col.k)}>{col.titulo}</Etiqueta>{campo(t, i, col, errs)}</Box>
+          ))}
+        </TarjetaCategoria>
+      );
+    });
   }
   return (
     <TableContainer>
       <Table size="small">
-        <TableHead><TableRow><TableCell>Categoría</TableCell><TableCell>Precio por fracción</TableCell><TableCell>Mínimo cobrado</TableCell></TableRow></TableHead>
+        <TableHead><TableRow><TableCell>Categoría</TableCell>{COLUMNAS_HORA.map((col) => <TableCell key={col.k}>{col.titulo}</TableCell>)}</TableRow></TableHead>
         <TableBody>
-          {tarifas.hora.map((t, i) => (
-            <FilaCategoria key={t.categoria} titulo={CATEGORIA_LABEL[t.categoria]} modificado={cambio(i, 'precio_fraccion') || cambio(i, 'minimo_min')}>
-              <TableCell sx={{ py: 1 }}><CampoMonto etiqueta={`Precio por fracción ${CATEGORIA_LABEL[t.categoria]}`} value={t.precio_fraccion} onChange={(v) => setHora(i, 'precio_fraccion', v === '' ? 0 : v)} /></TableCell>
-              <TableCell sx={{ py: 1 }}><SelectMinimo etiqueta={`Mínimo cobrado ${CATEGORIA_LABEL[t.categoria]}`} value={t.minimo_min} onChange={(v) => setHora(i, 'minimo_min', v)} /></TableCell>
-            </FilaCategoria>
-          ))}
+          {tarifas.hora.map((t, i) => {
+            const errs = erroresHora(t);
+            return (
+              <FilaCategoria key={t.categoria} titulo={CATEGORIA_LABEL[t.categoria]} modificado={COLUMNAS_HORA.some((col) => cambio(i, col.k))}>
+                {COLUMNAS_HORA.map((col) => <TableCell key={col.k} sx={{ py: 1, px: 0.5, verticalAlign: 'top' }}>{campo(t, i, col, errs)}</TableCell>)}
+              </FilaCategoria>
+            );
+          })}
         </TableBody>
       </Table>
     </TableContainer>
@@ -335,7 +378,8 @@ export default function TarifasPanel({ garajeId }) {
   const cambio = (k) => config[k] !== base.config[k];
   const error = (k) => errores[k]?.[0];
   const hayCambios = !iguales({ config, tarifas }, base);
-  const acciones = <Acciones hayCambios={hayCambios} saving={saving} invalido={config.cupo_abonos > config.capacidad} onDescartar={load} onGuardar={guardar} />;
+  const horaInvalida = tarifas.hora.some((h) => Object.keys(erroresHora(h)).length > 0);
+  const acciones = <Acciones hayCambios={hayCambios} saving={saving} invalido={config.cupo_abonos > config.capacidad || horaInvalida} onDescartar={load} onGuardar={guardar} />;
 
   return (
     <>
@@ -389,7 +433,8 @@ export default function TarifasPanel({ garajeId }) {
         </Seccion>
 
         <Stack spacing={3} sx={{ minWidth: 0 }}>
-          <Seccion titulo="Tarifas por hora" accion={<Typography variant="caption" sx={{ color: 'text.secondary' }}>Se cobra por fracción de 15 min</Typography>}>
+          <Seccion titulo="Tarifas por hora" detalle="La primera hora se cobra completa y después por fracción de 5 min. La estadía es lo máximo que se cobra: vacía, no hay tope.">
+
             <TablaHora tarifas={tarifas} base={base.tarifas} setHora={setHora} movil={movil} />
           </Seccion>
 
@@ -397,11 +442,15 @@ export default function TarifasPanel({ garajeId }) {
             <TablaAbonos tarifas={tarifas} base={base.tarifas} setAbono={setAbono} movil={movil} />
           </Seccion>
 
-          {auto && (
+          {auto && Number(auto.primera_hora) > 0 && (
             <Seccion titulo="Vista previa para el conductor">
               <Stack spacing={1}>
-                <FilaPrevia texto={`Auto · 3 h = 12 × ${ars(auto.precio_fraccion)}`} valor={ars(12 * auto.precio_fraccion)} />
-                <FilaPrevia texto={`Overstay 30 min = 2 × ${ars(auto.precio_fraccion)} + ${recargoPct} %`} valor={ars(Math.round(2 * auto.precio_fraccion * (1 + config.recargo_overstay)))} color="var(--danger)" />
+                {[[60, '1 h'], [90, '1 h 30 min'], [180, '3 h'], [540, '9 h'], [1440, '24 h']].map(([min, texto]) => {
+                  const precio = precioPorMinutos(auto, min);
+                  const conTope = precio < Number(auto.primera_hora) + Math.max(0, Math.ceil((min - 60) / FRACCION)) * Number(auto.cada_5);
+                  return <FilaPrevia key={min} texto={`Auto · ${texto}${conTope ? ' (estadía)' : ''}`} valor={ars(precio)} />;
+                })}
+                <FilaPrevia texto={`Overstay 30 min = 6 × ${ars(auto.cada_5)} + ${recargoPct} %`} valor={ars(Math.round(6 * auto.cada_5 * (1 + config.recargo_overstay)))} color="var(--danger)" />
                 {tarifas.abonos.AUTO.MENSUAL !== '' && <FilaPrevia texto="Auto · abono mensual" valor={ars(tarifas.abonos.AUTO.MENSUAL)} />}
               </Stack>
             </Seccion>
