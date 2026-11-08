@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Skeleton, Stack, TextField, Typography,
 } from '@mui/material';
@@ -53,6 +53,9 @@ export default function DeudasPanel({ garajeId }) {
     .then((d) => { setDeudas(d); setError(null); })
     .catch((e) => { setDeudas([]); setError(e.message); }), [garajeId]);
   useEffect(() => { load(); }, [load]);
+  // Una deuda pagada desde la app o cobrada por el playero desaparece sola, sin recargar la página
+  const recargar = useCallback(() => operacionService.deudas(garajeId).then(setDeudas), [garajeId]);
+  useEnVivo(recargar, 5000);
 
   return (
     <>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Card, Chip, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
@@ -8,6 +8,7 @@ import StatusBadge from '../../components/StatusBadge';
 import VehiclePlateBadge, { formatPatente } from '../../components/VehiclePlateBadge';
 import { descargarExcel } from '../../lib/excel';
 import { ars, CATEGORIA_LABEL, hora } from '../../lib/format';
+import { useEnVivo } from '../../lib/useEnVivo';
 import { MONO } from '../../theme';
 import { Encabezado, Leyenda, Seccion } from './comun';
 
@@ -71,17 +72,40 @@ export default function MonitorPanel({ garajeId }) {
   const [filtro, setFiltro] = useState('TODOS');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const load = () => garajesService.ocupacion(garajeId).then(setOcupacion).catch(() => {});
-    load();
-    const id = setInterval(load, 15000);
-    return () => clearInterval(id);
-  }, [garajeId]);
+  const [actualizado, setActualizado] = useState(null);
+  const [cambiadas, setCambiadas] = useState(() => new Set()); // reservas que cambiaron de estado en la última consulta
+
+  // Compara con lo que se mostraba para resaltar unos segundos las filas que cambiaron (p. ej. EN CURSO -> FINALIZADA)
+  const previas = useRef([]);
+  const recibir = useCallback((nuevas) => {
+    const estadoAntes = new Map(previas.current.map((r) => [r.id, r.estado]));
+    const distintas = previas.current.length ? nuevas.filter((r) => estadoAntes.get(r.id) !== r.estado).map((r) => r.id) : [];
+    previas.current = nuevas;
+    setReservas(nuevas);
+    if (distintas.length) setCambiadas(new Set(distintas));
+    setActualizado(new Date());
+  }, []);
+
+  const recargar = useCallback(() => Promise.all([
+    garajesService.ocupacion(garajeId).then(setOcupacion),
+    reservasService.list({ garaje: garajeId }).then(recibir),
+  ]), [garajeId, recibir]);
 
   useEffect(() => {
     setLoading(true);
-    reservasService.list({ garaje: garajeId }).then(setReservas).finally(() => setLoading(false));
-  }, [garajeId]);
+    setReservas([]);
+    previas.current = [];
+    garajesService.ocupacion(garajeId).then(setOcupacion).catch(() => {});
+    reservasService.list({ garaje: garajeId }).then(recibir).finally(() => setLoading(false));
+  }, [garajeId, recibir]);
+
+  useEnVivo(recargar, 5000);
+
+  useEffect(() => {
+    if (!cambiadas.size) return undefined;
+    const id = setTimeout(() => setCambiadas(new Set()), 4000);
+    return () => clearTimeout(id);
+  }, [cambiadas]);
 
   const counts = useMemo(() => FILTROS.reduce((acc, f) => ({ ...acc, [f]: f === 'TODOS' ? reservas.length : reservas.filter((r) => r.estado === f).length }), {}), [reservas]);
   const filtradas = filtro === 'TODOS' ? reservas : reservas.filter((r) => r.estado === filtro);
@@ -102,7 +126,9 @@ export default function MonitorPanel({ garajeId }) {
   return (
     <>
       <Encabezado titulo="Monitor de ocupación" detalle={new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}>
-        <Chip label="En vivo" color="success" variant="outlined" sx={{ fontWeight: 800 }} />
+        <Tooltip title={actualizado ? `Se actualiza solo cada 5 s · última vez ${actualizado.toLocaleTimeString('es-AR')}` : 'Se actualiza solo cada 5 s'}>
+          <Chip label="En vivo" color="success" variant="outlined" sx={{ fontWeight: 800 }} />
+        </Tooltip>
       </Encabezado>
 
       {alertas.length > 0 && (
@@ -146,7 +172,10 @@ export default function MonitorPanel({ garajeId }) {
               {loading && <TableRow><TableCell colSpan={7} sx={{ color: 'text.secondary' }}>Cargando reservas…</TableCell></TableRow>}
               {!loading && !filtradas.length && <TableRow><TableCell colSpan={7} sx={{ color: 'text.secondary' }}>No hay reservas con este estado.</TableCell></TableRow>}
               {filtradas.map((r) => (
-                <TableRow key={r.id} hover>
+                <TableRow key={r.id} hover sx={{
+                  transition: 'background-color 1.2s ease',
+                  ...(cambiadas.has(r.id) ? { bgcolor: 'var(--accent-soft)' } : {}),
+                }}>
                   <TableCell sx={{ fontFamily: MONO, fontSize: 13, color: 'text.secondary' }}>{r.id}</TableCell>
                   <TableCell><VehiclePlateBadge patente={r.patente} sinBorde /></TableCell>
                   <TableCell sx={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.05em' }}>{r.categoria}</TableCell>
