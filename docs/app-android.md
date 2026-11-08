@@ -125,6 +125,26 @@ Renderizarlo como QR (por ejemplo con ZXing). Si la reserva se cancela, borrar e
 Mostrar "Cancelar reserva" sólo mientras `now <= cancelable_hasta` (2 h antes del inicio, o 10 min después de pagar).
 El servidor vuelve a validar el plazo: si vence entre medio, responde 409 `ESTADO_INVALIDO`.
 
+## Notificaciones push
+
+Usan Firebase Cloud Messaging sin `google-services.json`: la app se configura desde `local.properties`
+(Firebase > Configuración del proyecto > tu app Android con el paquete `com.drivly.app`):
+
+```properties
+drivly.firebaseProjectId=<ID del proyecto>
+drivly.firebaseAppId=<ID de la app, 1:...:android:...>
+drivly.firebaseApiKey=<clave de API web>
+drivly.firebaseSenderId=<número del remitente>
+```
+
+Sin esos datos la app funciona igual, sin push. Al ingresar pide el permiso de notificaciones (Android 13+) y registra
+el token con `POST notificaciones/dispositivos/ { token }`; al cerrar sesión lo borra con `DELETE` y el mismo cuerpo.
+Al tocar un aviso se abre el ticket (`tipo=reserva`) o Mis reservas (`tipo=deuda`).
+
+El backend manda: reserva confirmada, recordatorio 30 min antes del inicio, aviso 15 min antes del fin, deuda saldada,
+reembolso y los recordatorios de deuda. Necesita `FCM_PROJECT_ID` y `FCM_CREDENCIALES` (JSON de la cuenta de servicio)
+en el `.env`. Los comprobantes de pago, deuda y reembolso salen además por email.
+
 ## Cámara del playero
 
 La pantalla del playero pide el permiso `CAMERA` recién al elegir qué va a escanear. El visor usa CameraX y ML Kit, con el modelo

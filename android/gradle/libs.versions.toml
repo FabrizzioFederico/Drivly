@@ -22,8 +22,11 @@ mlkitBarcode = "17.3.0"
 maplibre = "13.6.1"
 playServicesLocation = "21.4.0"
 splashscreen = "1.2.0"
+firebaseBom = "33.7.0"
 
 [libraries]
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

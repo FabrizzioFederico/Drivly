@@ -44,6 +44,13 @@ def _aislar_de_datacar(settings, monkeypatch):
     monkeypatch.setattr("integraciones.datacar.requests.get", _datacar_bloqueado)
 
 
+@pytest.fixture(autouse=True)
+def _aislar_de_firebase(settings):
+    """Los push quedan desactivados salvo en los tests que simulan FCM (fixture `fcm` de notificaciones/tests.py)."""
+    settings.FCM_PROJECT_ID = ""
+    settings.FCM_CREDENCIALES = ""
+
+
 @pytest.fixture
 def crear_usuario(db):
     def _crear(email, rol=Rol.CONDUCTOR, **extra):

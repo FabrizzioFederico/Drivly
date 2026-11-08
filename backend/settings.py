@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "operacion",
     "reportes",
     "integraciones",
+    "notificaciones",
 ]
 
 # Usuario propio: definirlo ANTES de la primera migración del proyecto.
@@ -138,6 +139,7 @@ if env("EMAIL_HOST", default=""):
             "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
             "OPTIONS": {
                 "host": env("EMAIL_HOST"),
+                "port": env.int("EMAIL_PORT", default=587),  # 587 con TLS (Gmail, Brevo, SendGrid...)
                 "use_tls": env.bool("EMAIL_USE_TLS", default=True),
                 "username": env("EMAIL_USER", default=""),
                 "password": env("EMAIL_PASSWORD", default=""),
@@ -209,7 +211,20 @@ CELERY_BEAT_SCHEDULE = {
         "task": "operacion.tasks.marcar_deudas_incobrables",
         "schedule": 60.0 * 60 * 24,
     },
+    "recordar-inicios": {
+        "task": "notificaciones.tasks.recordar_inicios",
+        "schedule": 60.0 * 5,
+    },
+    "avisar-fines": {
+        "task": "notificaciones.tasks.avisar_fines",
+        "schedule": 60.0 * 5,
+    },
 }
+
+# --- Notificaciones push (Firebase Cloud Messaging, API HTTP v1) -----------
+# Sin estas dos variables los push quedan desactivados; los comprobantes por email salen igual.
+FCM_PROJECT_ID = env("FCM_PROJECT_ID", default="")
+FCM_CREDENCIALES = env("FCM_CREDENCIALES", default="")  # ruta al JSON de la cuenta de servicio (no se sube al repo)
 
 # --- Producción ------------------------------------------------------------
 if not DEBUG:

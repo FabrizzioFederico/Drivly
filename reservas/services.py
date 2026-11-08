@@ -208,6 +208,9 @@ def _confirmar(reserva_id):
     reserva.qr_token = generar_qr_token(reserva)
     reserva.confirmada_en = ahora
     reserva.save(update_fields=["estado", "qr_token", "confirmada_en"])
+    from notificaciones.services import disparar
+
+    disparar("reserva_confirmada", reserva.id)  # comprobante por email y push, al confirmarse la transacción
     return reserva, True
 
 

@@ -194,6 +194,9 @@ def saldar_deuda(reserva_id, medio, transaccion_id=""):
     deuda.pagada_en = timezone.now()
     deuda.save(update_fields=["estado", "medio", "transaccion_id", "pagada_en"])
     Reserva.objects.filter(pk=reserva_id, estado=EstadoReserva.CON_DEUDA).update(estado=EstadoReserva.FINALIZADA)
+    from notificaciones.services import disparar
+
+    disparar("deuda_pagada", reserva_id)  # comprobante (Mercado Pago o efectivo) y push
     return True
 
 
@@ -271,6 +274,9 @@ def recordar_deudas() -> int:
             deuda.recordatorios_enviados = vencidos
             deuda.save(update_fields=["recordatorios_enviados"])
             enviados += 1
+            from notificaciones.services import recordar_deuda_por_push
+
+            recordar_deuda_por_push(deuda)
     return enviados
 
 

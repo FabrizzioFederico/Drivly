@@ -1,7 +1,12 @@
 package com.drivly.app.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
@@ -13,6 +18,7 @@ import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +41,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.drivly.app.DrivlyApplication
+import com.drivly.app.data.Push
 import com.drivly.app.ui.buscar.BuscarScreen
 import com.drivly.app.ui.components.ALTO_BARRA_FLOTANTE
 import com.drivly.app.ui.components.BarraFlotante
@@ -89,12 +96,22 @@ fun DrivlyApp(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Unit) {
     val logueado by app.sesion.logueado.collectAsStateWithLifecycle(initialValue = null)
     val rol by app.sesion.rol.collectAsStateWithLifecycle(initialValue = null)
 
-    // El rol guardado puede estar viejo si el admin pasó la cuenta a playero o la quitó del equipo
+    val contexto = LocalContext.current
+    // Android 13+ pide permiso para mostrar notificaciones; si lo niega, la app sigue igual (los comprobantes van por email)
+    val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
     LaunchedEffect(logueado) {
         if (logueado == true) {
+            // El rol guardado puede estar viejo si el admin pasó la cuenta a playero o la quitó del equipo
             runCatching { app.api.yo() }.getOrNull()?.rol
                 ?.takeIf { it == "CONDUCTOR" || it == "PLAYERO" }
                 ?.let { app.sesion.guardarRol(it) }
+            if (Push.configurado && Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(contexto, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                pedirPermiso.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            Push.registrar(app.api)
         }
     }
 
@@ -223,6 +240,14 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
     // (el de una deuda es deuda:<id>)
     LaunchedEffect(deepLink) {
         val uri = deepLink ?: return@LaunchedEffect
+        // Notificación push tocada: el ticket de la reserva, o Mis reservas si es una deuda
+        if (uri.host == "aviso") {
+            val id = uri.getQueryParameter("reserva_id")
+            if (uri.getQueryParameter("tipo") == "reserva" && id != null) nav.navigate(Rutas.ticket(id))
+            else nav.irAPestania(Rutas.RESERVAS)
+            alConsumirDeepLink()
+            return@LaunchedEffect
+        }
         val referencia = uri.getQueryParameter("external_reference")
         if (referencia != null) {
             val estado = uri.getQueryParameter("collection_status") ?: uri.getQueryParameter("mp_status")

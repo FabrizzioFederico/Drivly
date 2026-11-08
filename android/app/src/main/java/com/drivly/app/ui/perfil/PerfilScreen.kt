@@ -67,6 +67,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.drivly.app.BuildConfig
 import com.drivly.app.DrivlyApplication
+import com.drivly.app.data.Push
 import com.drivly.app.data.Sesion
 import com.drivly.app.data.api.DrivlyApi
 import com.drivly.app.data.api.PedidoCambioEmail
@@ -161,7 +162,10 @@ class PerfilViewModel(private val api: DrivlyApi, private val sesion: Sesion) : 
         e.comoErrorDrivly().message
     }
 
-    fun cerrarSesion() = viewModelScope.launch { sesion.cerrar() }
+    fun cerrarSesion() = viewModelScope.launch {
+        Push.olvidar(api) // antes de borrar la sesión: el pedido necesita el token de acceso
+        sesion.cerrar()
+    }
 
     private fun tarea(exito: String, bloque: suspend () -> Unit) {
         ocupado = true

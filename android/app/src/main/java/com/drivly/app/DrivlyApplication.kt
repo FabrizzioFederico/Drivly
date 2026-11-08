@@ -1,6 +1,7 @@
 package com.drivly.app
 
 import android.app.Application
+import com.drivly.app.data.Push
 import com.drivly.app.data.Sesion
 import com.drivly.app.data.api.DrivlyApi
 import com.drivly.app.data.crearApi
@@ -22,5 +23,6 @@ class DrivlyApplication : Application() {
         sesion = Sesion(this)
         // Si el refresh token venció o fue revocado, se cierra la sesión y la app vuelve al login.
         api = crearApi(sesion) { alcance.launch { sesion.cerrar() } }
+        Push.iniciar(this)
     }
 }

@@ -34,6 +34,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun recibir(intent: Intent?) {
+        // Al tocar una notificación push llegan sus datos como extras: se pasan a drivly://aviso?tipo=...&reserva_id=...
+        val tipo = intent?.getStringExtra("tipo")
+        val reservaId = intent?.getStringExtra("reserva_id")
+        if (tipo != null && reservaId != null) {
+            deepLinks.value = Uri.parse("drivly://aviso?tipo=${Uri.encode(tipo)}&reserva_id=${Uri.encode(reservaId)}")
+            return
+        }
         val uri = intent?.data ?: return
         if (uri.scheme == "drivly" && uri.host == "pago-resultado") deepLinks.value = uri
     }

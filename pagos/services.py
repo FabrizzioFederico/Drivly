@@ -265,6 +265,9 @@ def _reembolsar(pago, sdk):
     else:
         pago.resultado = ResultadoPago.REEMBOLSADO
         pago.reembolso_id = str(respuesta["response"].get("id", ""))
+        from notificaciones.services import disparar
+
+        disparar("reembolso", pago.id)
     pago.save(update_fields=["resultado", "reembolso_id", "actualizado_en"])
 
 

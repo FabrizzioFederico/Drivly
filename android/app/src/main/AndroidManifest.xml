@@ -9,6 +9,8 @@
     <!-- El playero escanea el QR del conductor. Sin cámara puede cargar la patente a mano. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Android 13+: avisos de reservas, pagos y deudas. Se pide al ingresar; sin permiso la app funciona igual. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".DrivlyApplication"
@@ -42,6 +44,21 @@
                 <data android:scheme="drivly" android:host="pago-resultado" />
             </intent-filter>
         </activity>
+
+        <!-- Notificaciones push de Drivly (Firebase Cloud Messaging) -->
+        <service
+            android:name=".PushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notificacion" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="reservas" />
     </application>
 
 </manifest>

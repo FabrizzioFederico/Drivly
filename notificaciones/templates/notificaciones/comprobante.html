@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ titulo }}</title></head>
+<body style="margin:0;padding:24px 12px;background:#f2f4f5;font-family:Arial,Helvetica,sans-serif;color:#1d2327;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden;">
+        <tr><td style="background:#0f1416;padding:20px 24px;">
+          <span style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:6px;background:#00C2A8;color:#0f1416;font-weight:bold;">D</span>
+          <span style="color:#ffffff;font-size:18px;font-weight:bold;vertical-align:middle;margin-left:8px;">Drivly</span>
+        </td></tr>
+        <tr><td style="padding:24px;">
+          <p style="margin:0 0 4px;font-size:14px;color:#5b6670;">Hola{% if nombre %} {{ nombre }}{% endif %},</p>
+          <h1 style="margin:0 0 20px;font-size:22px;">{{ titulo }}</h1>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
+            {% for etiqueta, valor in filas %}
+            <tr>
+              <td style="padding:8px 0;border-bottom:1px solid #e6e9eb;color:#5b6670;width:45%;vertical-align:top;">{{ etiqueta }}</td>
+              <td style="padding:8px 0;border-bottom:1px solid #e6e9eb;text-align:right;vertical-align:top;">{{ valor }}</td>
+            </tr>
+            {% endfor %}
+            <tr>
+              <td style="padding:14px 0 0;font-size:16px;font-weight:bold;">Total</td>
+              <td style="padding:14px 0 0;font-size:20px;font-weight:bold;text-align:right;">{{ total }}</td>
+            </tr>
+          </table>
+          {% if nota %}<p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#5b6670;">{{ nota }}</p>{% endif %}
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

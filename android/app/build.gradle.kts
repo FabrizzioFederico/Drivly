@@ -11,6 +11,8 @@ plugins {
 // Configuración local de cada desarrollador (local.properties no se sube al repo):
 //   drivly.apiUrl=https://<dominio-ngrok>/api/
 //   drivly.googleWebClientId=<client ID web de Google, el mismo que usa la web>
+//   drivly.firebaseProjectId / firebaseAppId / firebaseApiKey / firebaseSenderId: notificaciones push
+//     (consola de Firebase > Configuración del proyecto > tu app Android). Vacíos: la app anda sin push.
 val local = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
@@ -32,6 +34,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_URL", "\"${local("drivly.apiUrl", "http://10.0.2.2:8000/api/")}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${local("drivly.googleWebClientId")}\"")
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${local("drivly.firebaseProjectId")}\"")
+        buildConfigField("String", "FIREBASE_APP_ID", "\"${local("drivly.firebaseAppId")}\"")
+        buildConfigField("String", "FIREBASE_API_KEY", "\"${local("drivly.firebaseApiKey")}\"")
+        buildConfigField("String", "FIREBASE_SENDER_ID", "\"${local("drivly.firebaseSenderId")}\"")
     }
 
     buildTypes {
@@ -88,6 +94,10 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.androidx.browser)
     implementation(libs.zxing.core)
+
+    // Notificaciones push (Firebase Cloud Messaging). Se configura desde local.properties, sin google-services.json
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
 
     // Escaneo del QR por el playero (ML Kit con el modelo incluido en la app)
     implementation(libs.androidx.camera.camera2)

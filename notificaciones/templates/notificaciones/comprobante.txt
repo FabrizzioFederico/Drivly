@@ -1,0 +1,12 @@
+{% autoescape off %}Hola{% if nombre %} {{ nombre }}{% endif %}:
+
+{{ titulo }}
+{% for etiqueta, valor in filas %}
+{{ etiqueta }}: {{ valor }}{% endfor %}
+
+Total: {{ total }}
+
+{{ nota }}
+
+Drivly
+{% endautoescape %}

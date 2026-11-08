@@ -90,6 +90,10 @@ data class Vehiculo(
             ?.let { nombre -> anio?.let { "$nombre · $it" } ?: nombre }
 }
 
+/** Token de Firebase Cloud Messaging del teléfono. */
+@Serializable
+data class PedidoDispositivo(val token: String, val plataforma: String = "android")
+
 @Serializable
 data class PedidoLogin(val email: String, val password: String)
 

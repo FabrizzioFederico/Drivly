@@ -4,6 +4,7 @@ import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
@@ -20,6 +21,13 @@ interface DrivlyApi {
 
     @POST("auth/google/")
     suspend fun googleLogin(@Body pedido: PedidoGoogleLogin): RespuestaLogin
+
+    /** Notificaciones push: asocia (o desasocia, al cerrar sesión) este teléfono a la cuenta. */
+    @POST("notificaciones/dispositivos/")
+    suspend fun registrarDispositivo(@Body pedido: PedidoDispositivo)
+
+    @HTTP(method = "DELETE", path = "notificaciones/dispositivos/", hasBody = true)
+    suspend fun borrarDispositivo(@Body pedido: PedidoDispositivo)
 
     /** Cuenta común: email y contraseña. */
     @POST("auth/login/")

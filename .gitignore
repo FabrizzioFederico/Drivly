@@ -1,6 +1,8 @@
 # Secretos y datos locales
 .env
 .mp-integrate-progress.md
+# Clave privada de la cuenta de servicio de Firebase (notificaciones push)
+firebase-cuenta-servicio.json
 # Documentación de trabajo (Word, PDF...). docs/app-android.md ya está en el repo y sigue versionado.
 docs/
 db.sqlite3
