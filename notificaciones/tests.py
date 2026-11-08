@@ -142,6 +142,25 @@ def test_si_el_mail_falla_se_puede_reintentar(garaje, vehiculo, monkeypatch):  #
     assert len(mail.outbox) == 1
 
 
+def test_si_el_mail_falla_el_push_sale_igual(fcm, garaje, vehiculo, conductor, monkeypatch):  # noqa: F811
+    """Gmail rechaza el login: el conductor igual recibe el push, y el reintento sólo vuelve a probar el email."""
+    enviados, _ = fcm
+    Dispositivo.objects.create(usuario=conductor, token="tok-1")
+    r = crear_reserva(garaje, vehiculo, en(60), en(180))
+
+    def smtp_caido(*a, **k):
+        raise OSError("Connection unexpectedly closed")
+
+    monkeypatch.setattr(services, "_comprobante", smtp_caido)
+    with pytest.raises(OSError):
+        services.reserva_confirmada(r.id)
+    assert len(enviados) == 1 and enviados[0]["notification"]["title"] == "Reserva confirmada"
+    monkeypatch.setattr(services, "_comprobante", lambda *a, **k: None)
+    services.reserva_confirmada(r.id)  # reintento de Celery
+    assert len(enviados) == 1  # el push no se repite
+    assert set(Aviso.objects.values_list("canal", flat=True)) == {"EMAIL", "PUSH"}
+
+
 # ---------- Push ----------
 
 def test_registrar_y_borrar_el_telefono(cliente, conductor, crear_usuario):

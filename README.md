@@ -26,9 +26,12 @@ python manage.py runserver
 En otras dos terminales, para que corran las tareas programadas:
 
 ```bash
-celery -A backend worker -l info
+celery -A backend worker -l info --pool=solo   # en Windows hace falta --pool=solo
 celery -A backend beat -l info
 ```
+
+Celery necesita Redis (lo levanta `docker compose up -d`). Después de cambiar el `.env` hay que reiniciar Django y
+los dos procesos de Celery: con Ctrl+C en cada terminal y volviendo a correr el comando.
 
 Sin Celery no se marcan los holds vencidos como expirados, no se reintentan los reembolsos y no salen los recordatorios de deuda.
 

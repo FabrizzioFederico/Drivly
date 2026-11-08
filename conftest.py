@@ -45,6 +45,17 @@ def _aislar_de_datacar(settings, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _celery_en_el_momento():
+    """Las tareas corren dentro del test y nunca llegan al Redis de desarrollo (ni a un worker que esté corriendo)."""
+    from backend.celery import app
+
+    antes = app.conf.task_always_eager, app.conf.task_eager_propagates
+    app.conf.task_always_eager, app.conf.task_eager_propagates = True, True
+    yield
+    app.conf.task_always_eager, app.conf.task_eager_propagates = antes
+
+
+@pytest.fixture(autouse=True)
 def _aislar_de_firebase(settings):
     """Los push quedan desactivados salvo en los tests que simulan FCM (fixture `fcm` de notificaciones/tests.py)."""
     settings.FCM_PROJECT_ID = ""

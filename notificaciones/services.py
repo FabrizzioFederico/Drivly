@@ -73,6 +73,22 @@ def una_vez(usuario, tipo: str, clave, canal: str, enviar) -> bool:
     return True
 
 
+def cada_canal(*envios):
+    """
+    Manda el email y el push por separado: si falla uno (p. ej. el SMTP), el otro sale igual.
+    Después relanza el primer error para que la tarea reintente; lo que ya salió no se repite (una_vez).
+    """
+    errores = []
+    for enviar in envios:
+        try:
+            enviar()
+        except Exception as error:
+            logger.warning("Falló un aviso: %s", error)
+            errores.append(error)
+    if errores:
+        raise errores[0]
+
+
 def _comprobante(usuario, asunto: str, titulo: str, filas: list[tuple[str, str]], total: str, nota: str = ""):
     contexto = {"nombre": usuario.nombre, "titulo": titulo, "filas": filas, "total": total, "nota": nota}
     mensaje = EmailMultiAlternatives(
@@ -116,18 +132,20 @@ def reserva_confirmada(reserva_id):
         ("Operación de Mercado Pago", pago.payment_id if pago else "—"),
         ("Fecha del pago", fecha_hora(reserva.confirmada_en)),
     ]
-    una_vez(conductor, "reserva_confirmada", reserva.id, Canal.EMAIL, lambda: _comprobante(
-        conductor, f"Drivly: comprobante de tu reserva en {reserva.garaje.nombre}", "Reserva confirmada",
-        filas, pesos(reserva.monto),
-        "Mostrá el QR de Mis reservas al llegar. Podés cancelar con reembolso total hasta 2 h antes del inicio. "
-        + AVISO_FISCAL,
-    ))
     cuando = (f"desde el {fecha_hora(reserva.inicio)[:10]}" if reserva.es_abono
               else f"el {fecha_hora(reserva.inicio)[:10]} a las {hora(reserva.inicio)}")
-    una_vez(conductor, "reserva_confirmada", reserva.id, Canal.PUSH, lambda: push.enviar(
-        conductor, "Reserva confirmada", f"Te esperamos en {reserva.garaje.nombre} {cuando}.",
-        {"tipo": "reserva", "reserva_id": reserva.id},
-    ))
+    cada_canal(
+        lambda: una_vez(conductor, "reserva_confirmada", reserva.id, Canal.EMAIL, lambda: _comprobante(
+            conductor, f"Drivly: comprobante de tu reserva en {reserva.garaje.nombre}", "Reserva confirmada",
+            filas, pesos(reserva.monto),
+            "Mostrá el QR de Mis reservas al llegar. Podés cancelar con reembolso total hasta 2 h antes del inicio. "
+            + AVISO_FISCAL,
+        )),
+        lambda: una_vez(conductor, "reserva_confirmada", reserva.id, Canal.PUSH, lambda: push.enviar(
+            conductor, "Reserva confirmada", f"Te esperamos en {reserva.garaje.nombre} {cuando}.",
+            {"tipo": "reserva", "reserva_id": reserva.id},
+        )),
+    )
 
 
 def deuda_pagada(reserva_id):
@@ -146,14 +164,16 @@ def deuda_pagada(reserva_id):
         ("Operación de Mercado Pago", deuda.transaccion_id or "—"),
         ("Fecha del pago", fecha_hora(deuda.pagada_en)),
     ]
-    una_vez(conductor, "deuda_pagada", reserva.id, Canal.EMAIL, lambda: _comprobante(
-        conductor, f"Drivly: comprobante del pago de tu deuda en {reserva.garaje.nombre}", "Deuda saldada",
-        filas, pesos(deuda.monto), "Tu cuenta ya puede hacer reservas nuevas. " + AVISO_FISCAL,
-    ))
-    una_vez(conductor, "deuda_pagada", reserva.id, Canal.PUSH, lambda: push.enviar(
-        conductor, "Deuda saldada", "Ya podés volver a reservar.", {"tipo": "deuda", "reserva_id": reserva.id},
-        canal_android="deudas",
-    ))
+    cada_canal(
+        lambda: una_vez(conductor, "deuda_pagada", reserva.id, Canal.EMAIL, lambda: _comprobante(
+            conductor, f"Drivly: comprobante del pago de tu deuda en {reserva.garaje.nombre}", "Deuda saldada",
+            filas, pesos(deuda.monto), "Tu cuenta ya puede hacer reservas nuevas. " + AVISO_FISCAL,
+        )),
+        lambda: una_vez(conductor, "deuda_pagada", reserva.id, Canal.PUSH, lambda: push.enviar(
+            conductor, "Deuda saldada", "Ya podés volver a reservar.", {"tipo": "deuda", "reserva_id": reserva.id},
+            canal_android="deudas",
+        )),
+    )
 
 
 def reembolso(pago_id):
@@ -168,14 +188,16 @@ def reembolso(pago_id):
         ("Reembolso", f"Operación {pago.reembolso_id}" if pago.reembolso_id else "—"),
         ("Fecha", fecha_hora(timezone.now())),
     ]
-    una_vez(conductor, "reembolso", pago.id, Canal.EMAIL, lambda: _comprobante(
-        conductor, f"Drivly: te devolvimos {pesos(pago.monto)}", "Reembolso", filas, pesos(pago.monto),
-        "La devolución se acredita por el mismo medio con que pagaste. Con tarjeta puede tardar hasta el próximo resumen.",
-    ))
-    una_vez(conductor, "reembolso", pago.id, Canal.PUSH, lambda: push.enviar(
-        conductor, "Reembolso hecho", f"Te devolvimos {pesos(pago.monto)} de tu reserva en {reserva.garaje.nombre}.",
-        {"tipo": "reserva", "reserva_id": reserva.id},
-    ))
+    cada_canal(
+        lambda: una_vez(conductor, "reembolso", pago.id, Canal.EMAIL, lambda: _comprobante(
+            conductor, f"Drivly: te devolvimos {pesos(pago.monto)}", "Reembolso", filas, pesos(pago.monto),
+            "La devolución se acredita por el mismo medio con que pagaste. Con tarjeta puede tardar hasta el próximo resumen.",
+        )),
+        lambda: una_vez(conductor, "reembolso", pago.id, Canal.PUSH, lambda: push.enviar(
+            conductor, "Reembolso hecho", f"Te devolvimos {pesos(pago.monto)} de tu reserva en {reserva.garaje.nombre}.",
+            {"tipo": "reserva", "reserva_id": reserva.id},
+        )),
+    )
 
 
 def recordar_inicios() -> int:
