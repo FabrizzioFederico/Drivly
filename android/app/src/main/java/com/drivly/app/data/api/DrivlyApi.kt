@@ -156,4 +156,15 @@ interface DrivlyApi {
 
     @POST("operacion/deudas/{id}/efectivo/")
     suspend fun cobrarEnEfectivo(@Path("id") reservaId: String): EstadoDeuda
+
+    /** Con qué pagó un cliente sin reserva al salir (efectivo, Mercado Pago o transferencia). */
+    @POST("operacion/presencial/{id}/medio/")
+    suspend fun marcarMedio(@Path("id") reservaId: String, @Body pedido: PedidoMedio): Reserva
+
+    /** Lo cobrado desde el último cierre de caja del garaje. */
+    @GET("operacion/caja/")
+    suspend fun caja(@Query("garaje") garajeId: String): ResumenCaja
+
+    @POST("operacion/caja/cerrar/")
+    suspend fun cerrarCaja(@Body pedido: PedidoCierre): CierreCaja
 }

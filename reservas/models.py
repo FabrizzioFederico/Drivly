@@ -55,6 +55,8 @@ class Reserva(models.Model):
     # Cliente presencial (regla 6): sin conductor ni vehículo registrados
     patente_presencial = models.CharField(max_length=7, blank=True, default="")
     salida_estimada = models.DateTimeField(null=True, blank=True)
+    # Cómo pagó el cliente presencial al salir (operacion.MedioCobro). Vacío: el playero no lo marcó (cuenta como efectivo)
+    medio_cobro = models.CharField(max_length=13, blank=True, default="")
     suscripcion_mp_id = models.CharField(max_length=64, blank=True, default="")
     qr_token = models.CharField(max_length=128, unique=True, null=True, blank=True)
     confirmada_en = models.DateTimeField(null=True, blank=True)  # cuándo se acreditó el pago (gracia para cancelar)

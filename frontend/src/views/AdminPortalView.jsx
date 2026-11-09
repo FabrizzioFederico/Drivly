@@ -6,6 +6,7 @@ import {
 import { useTheme } from '@mui/material/styles';
 import AccountBalanceWalletOutlined from '@mui/icons-material/AccountBalanceWalletOutlined';
 import BarChartOutlined from '@mui/icons-material/BarChartOutlined';
+import PointOfSaleOutlined from '@mui/icons-material/PointOfSaleOutlined';
 import GroupsOutlined from '@mui/icons-material/GroupsOutlined';
 import LocalParkingOutlined from '@mui/icons-material/LocalParkingOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -14,6 +15,7 @@ import TuneOutlined from '@mui/icons-material/TuneOutlined';
 import { authService } from '../api/authService';
 import { USE_MOCKS } from '../api/client';
 import { garajesService } from '../api/garajesService';
+import CajaPanel from './admin/CajaPanel';
 import CobrosPanel from './admin/CobrosPanel';
 import DeudasPanel from './admin/DeudasPanel';
 import EquipoPanel from './admin/EquipoPanel';
@@ -31,7 +33,8 @@ const NAV = [
   { id: 'equipo', label: 'Equipo (Playeros)', Icono: GroupsOutlined },
   { id: 'cobros', label: 'Cobros (Mercado Pago)', Icono: AccountBalanceWalletOutlined },
   { id: 'deudas', label: 'Deudas', Icono: ReceiptLongOutlined },
-  { id: 'reportes', label: 'Reportes y Caja', Icono: BarChartOutlined },
+  { id: 'reportes', label: 'Monitor', Icono: BarChartOutlined },
+  { id: 'caja', label: 'Caja e informe', Icono: PointOfSaleOutlined },
 ];
 
 const iniciales = (nombre) => (nombre || 'A').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
@@ -166,6 +169,7 @@ export default function AdminPortalView({ user }) {
               {section === 'equipo' && <EquipoPanel garajeId={garajeId} />}
               {section === 'cobros' && <CobrosPanel garajeId={garajeId} retorno={retornoMP} />}
               {section === 'deudas' && <DeudasPanel garajeId={garajeId} />}
+              {section === 'caja' && <CajaPanel garajeId={garajeId} />}
             </>
           )}
         </Box>

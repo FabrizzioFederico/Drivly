@@ -10,6 +10,7 @@ mercadopago          # SDK oficial de Mercado Pago
 cryptography         # cifrado de los tokens OAuth de los garajes
 Pillow               # fotos de perfil (ImageField): se achican y recomprimen al subirlas
 segno==1.6.6         # QR de la reserva dentro del comprobante por email
+reportlab==4.2.5     # informe de caja en PDF
 celery[redis]
 requests
 gunicorn

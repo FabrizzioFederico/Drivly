@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -18,7 +19,7 @@ from reservas.exceptions import DeudaPatente, GarajeSinMercadoPago
 from reservas.serializers import ReservaSerializer
 from vehiculos.models import normalizar_patente, validar_patente
 
-from . import services
+from . import caja, services
 from .models import ESTADOS_IMPAGOS, Deuda, EstadoDeuda, MedioCobro
 
 logger = logging.getLogger(__name__)
@@ -248,3 +249,93 @@ class PagarDeudaView(APIView):
             return Response({"init_point": crear_cobro_deuda(deuda, canal)})
         except GarajeSinMercadoPago:  # la deuda sigue siendo con este garaje: no sirve "probá con otro"
             raise GarajeSinMercadoPago("Este garaje no puede cobrar por Mercado Pago ahora. Podés pagarle en persona.")
+
+
+# ---------- Caja: medio de cobro de presenciales y cierre del día ----------
+
+def _cierre_json(c):
+    return {
+        "id": c.id, "desde": c.desde, "hasta": c.hasta, "cerrado_por": c.cerrado_por.nombre or c.cerrado_por.email,
+        "efectivo_esperado": str(c.efectivo_esperado), "efectivo_contado": str(c.efectivo_contado),
+        "diferencia": str(c.diferencia), "observaciones": c.observaciones, "resumen": c.resumen,
+    }
+
+
+class _GarajeSerializer(serializers.Serializer):
+    garaje = serializers.UUIDField()
+
+
+class MedioPresencialView(_OperacionView):
+    """POST /api/operacion/presencial/{reserva_id}/medio/ {garaje, medio}: con qué pagó el cliente sin reserva."""
+
+    def post(self, request, reserva_id):
+        datos = _GarajeSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        garaje = _garaje_de(request.user, datos.validated_data["garaje"])
+        reserva = caja.marcar_medio(garaje, reserva_id, str(request.data.get("medio", "")))
+        return Response(ReservaSerializer(reserva).data)
+
+
+class CajaView(_OperacionView):
+    """GET /api/operacion/caja/?garaje= — lo cobrado desde el último cierre, para cerrar el día."""
+
+    def get(self, request):
+        datos = _GarajeSerializer(data=request.query_params)
+        datos.is_valid(raise_exception=True)
+        garaje = _garaje_de(request.user, datos.validated_data["garaje"])
+        ultimo = garaje.cierres.select_related("cerrado_por").first()
+        return Response({**caja.resumen_actual(garaje), "ultimo_cierre": _cierre_json(ultimo) if ultimo else None})
+
+
+class _CierreSerializer(_GarajeSerializer):
+    efectivo_contado = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0"))
+    observaciones = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
+
+
+class CerrarCajaView(_OperacionView):
+    """POST /api/operacion/caja/cerrar/ {garaje, efectivo_contado, observaciones?} — cierre del día del playero."""
+
+    def post(self, request):
+        datos = _CierreSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        d = datos.validated_data
+        garaje = _garaje_de(request.user, d["garaje"])
+        cierre = caja.cerrar(garaje.id, request.user, d["efectivo_contado"], d["observaciones"])
+        return Response(_cierre_json(cierre), status=201)
+
+
+class CierresView(_OperacionView):
+    """GET /api/operacion/cierres/?garaje=&desde=AAAA-MM-DD&hasta=AAAA-MM-DD — historial de cierres."""
+
+    def get(self, request):
+        datos = _GarajeSerializer(data=request.query_params)
+        datos.is_valid(raise_exception=True)
+        garaje = _garaje_de(request.user, datos.validated_data["garaje"])
+        cierres = garaje.cierres.select_related("cerrado_por")
+        rango = _RangoSerializer(data=request.query_params)
+        rango.is_valid(raise_exception=True)
+        ini, fin = rango.limites()
+        return Response([_cierre_json(c) for c in cierres.filter(hasta__gte=ini, hasta__lt=fin)[:200]])
+
+
+class _RangoSerializer(serializers.Serializer):
+    """Período por fechas locales, ambas incluidas. Sin fechas: los últimos 30 días."""
+
+    desde = serializers.DateField(required=False)
+    hasta = serializers.DateField(required=False)
+
+    def validate(self, attrs):
+        hoy = timezone.localdate()
+        attrs.setdefault("hasta", hoy)
+        attrs.setdefault("desde", attrs["hasta"] - timedelta(days=29))
+        if attrs["desde"] > attrs["hasta"]:
+            raise serializers.ValidationError({"desde": "Tiene que ser anterior a la fecha hasta."})
+        if (attrs["hasta"] - attrs["desde"]).days > 366:
+            raise serializers.ValidationError({"desde": "El período puede ser de hasta un año."})
+        return attrs
+
+    def limites(self):
+        d = self.validated_data
+        ini = timezone.make_aware(datetime.combine(d["desde"], time.min))
+        fin = timezone.make_aware(datetime.combine(d["hasta"] + timedelta(days=1), time.min))
+        return ini, fin

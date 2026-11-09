@@ -40,7 +40,7 @@ class ReservaSerializer(serializers.ModelSerializer):
         model = Reserva
         fields = [
             "id", "garaje", "garaje_detalle", "vehiculo", "patente", "categoria", "origen", "modalidad",
-            "inicio", "fin", "estado", "hold_expira_en", "total", "creada_en", "cancelable_hasta",
+            "inicio", "fin", "estado", "hold_expira_en", "total", "creada_en", "cancelable_hasta", "medio_cobro",
         ]
         read_only_fields = fields
 

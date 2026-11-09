@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -15,6 +16,8 @@ from rest_framework.response import Response
 
 from cuentas.models import Rol, Usuario
 from cuentas.permissions import EsAdminGaraje
+from reportes.informe import informe as informe_de_caja
+from reportes.informe import pdf as pdf_de_informe
 from reportes.services import metricas_del_dia
 from reservas.disponibilidad import cercanos_a, garajes_con_disponibilidad
 from reservas.models import MODALIDADES_ABONO, EstadoReserva, Modalidad
@@ -141,6 +144,42 @@ class GarajeViewSet(viewsets.ModelViewSet):
         if texto and fecha is None:
             raise ValidationError({"fecha": "Usá el formato YYYY-MM-DD."})
         return Response(metricas_del_dia(self.get_object(), fecha))
+
+    def _periodo_de_informe(self, request):
+        """?desde=AAAA-MM-DD&hasta=AAAA-MM-DD (las dos incluidas). Sin fechas: hoy. Hasta un año."""
+        if request.user.rol != Rol.ADMIN_GARAJE:
+            raise PermissionDenied("El informe es sólo para el administrador del garaje.")
+        hoy = timezone.localdate()
+        fechas = {}
+        for clave in ("desde", "hasta"):
+            texto = request.query_params.get(clave)
+            try:
+                fechas[clave] = parse_date(texto) if texto else hoy
+            except ValueError:  # bien formada pero inexistente (mes 13, 31 de abril)
+                fechas[clave] = None
+            if fechas[clave] is None:
+                raise ValidationError({clave: "Usá una fecha válida con el formato AAAA-MM-DD."})
+        if fechas["desde"] > fechas["hasta"]:
+            raise ValidationError({"desde": "Tiene que ser anterior a la fecha hasta."})
+        if (fechas["hasta"] - fechas["desde"]).days > 366:
+            raise ValidationError({"desde": "El período puede ser de hasta un año."})
+        return self.get_object(), fechas["desde"], fechas["hasta"]
+
+    @action(detail=True, methods=["get"])
+    def informe(self, request, pk=None):
+        """GET /api/garajes/{id}/informe/?desde&hasta — ingresos por medio, comisión y cierres de caja."""
+        garaje, desde, hasta = self._periodo_de_informe(request)
+        return Response(informe_de_caja(garaje, desde, hasta))
+
+    @action(detail=True, methods=["get"], url_path="informe/pdf")
+    def informe_pdf(self, request, pk=None):
+        """GET /api/garajes/{id}/informe/pdf/?desde&hasta — el mismo informe en PDF para imprimir o mandar."""
+        garaje, desde, hasta = self._periodo_de_informe(request)
+        contenido = pdf_de_informe(informe_de_caja(garaje, desde, hasta))
+        nombre = f"drivly-informe-{desde:%Y-%m-%d}" + ("" if desde == hasta else f"-al-{hasta:%Y-%m-%d}") + ".pdf"
+        respuesta = HttpResponse(contenido, content_type="application/pdf")
+        respuesta["Content-Disposition"] = f'attachment; filename="{nombre}"'
+        return respuesta
 
     @action(detail=True, methods=["get", "put"])
     def tarifas(self, request, pk=None):

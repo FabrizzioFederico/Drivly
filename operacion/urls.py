@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    CajaView, CerrarCajaView, CierresView, MedioPresencialView,
     CondonarDeudaView, DeudasDelGarajeView, EfectivoDeudaView, EgresoView, EstadoDeudaView, IngresoView,
     MisDeudasView, PagarDeudaView, SinLugarView,
 )
@@ -14,5 +15,9 @@ urlpatterns = [
     path("deudas/<uuid:reserva_id>/efectivo/", EfectivoDeudaView.as_view(), name="operacion-deuda-efectivo"),
     path("deudas/<uuid:reserva_id>/condonar/", CondonarDeudaView.as_view(), name="operacion-deuda-condonar"),
     path("mis-deudas/", MisDeudasView.as_view(), name="operacion-mis-deudas"),
+    path("presencial/<uuid:reserva_id>/medio/", MedioPresencialView.as_view(), name="operacion-medio-presencial"),
+    path("caja/", CajaView.as_view(), name="operacion-caja"),
+    path("caja/cerrar/", CerrarCajaView.as_view(), name="operacion-cerrar-caja"),
+    path("cierres/", CierresView.as_view(), name="operacion-cierres"),
     path("mis-deudas/<uuid:reserva_id>/pagar/", PagarDeudaView.as_view(), name="operacion-pagar-deuda"),
 ]

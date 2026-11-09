@@ -173,6 +173,47 @@ data class Reserva(
     @SerialName("cancelable_hasta") val cancelableHasta: String? = null,
     /** Sólo en la respuesta de cancelar: REEMBOLSADO, REEMBOLSO_FALLIDO o null. */
     val reembolso: String? = null,
+    /** Clientes sin reserva: con qué pagó al salir (EFECTIVO, MERCADO_PAGO, TRANSFERENCIA o vacío). */
+    @SerialName("medio_cobro") val medioCobro: String = "",
+)
+
+// ---------- Caja del playero ----------
+
+@Serializable
+data class PedidoMedio(val garaje: String, val medio: String)
+
+@Serializable
+data class TotalMedio(val cantidad: Int = 0, val total: String = "0.00")
+
+/** Lo cobrado desde el último cierre. Las claves de los mapas: EFECTIVO, MERCADO_PAGO, TRANSFERENCIA, SIN_INDICAR. */
+@Serializable
+data class ResumenCaja(
+    val desde: String,
+    val hasta: String,
+    @SerialName("efectivo_esperado") val efectivoEsperado: String,
+    val presenciales: Map<String, TotalMedio> = emptyMap(),
+    val excesos: Map<String, TotalMedio> = emptyMap(),
+    val app: TotalMedio = TotalMedio(),
+    @SerialName("ultimo_cierre") val ultimoCierre: CierreCaja? = null,
+)
+
+@Serializable
+data class CierreCaja(
+    val id: Int,
+    val desde: String,
+    val hasta: String,
+    @SerialName("cerrado_por") val cerradoPor: String = "",
+    @SerialName("efectivo_esperado") val efectivoEsperado: String,
+    @SerialName("efectivo_contado") val efectivoContado: String,
+    val diferencia: String,
+    val observaciones: String = "",
+)
+
+@Serializable
+data class PedidoCierre(
+    val garaje: String,
+    @SerialName("efectivo_contado") val efectivoContado: String,
+    val observaciones: String = "",
 )
 
 @Serializable

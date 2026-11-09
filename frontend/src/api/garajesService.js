@@ -53,6 +53,20 @@ export const garajesService = {
     return (await client.get(`/garajes/${id}/ocupacion/`)).data;
   },
 
+  /** GET /garajes/{id}/informe/?desde&hasta (AAAA-MM-DD): ingresos por medio, comisión y cierres de caja */
+  async informe(id, params) {
+    return (await client.get(`/garajes/${id}/informe/`, { params })).data;
+  },
+
+  /** GET /garajes/{id}/informe/pdf/?desde&hasta: el mismo informe en PDF (se baja como archivo) */
+  async informePdf(id, params) {
+    const r = await client.get(`/garajes/${id}/informe/pdf/`, { params, responseType: 'blob' });
+    const nombre = /filename="([^"]+)"/.exec(r.headers['content-disposition'] ?? '')?.[1] ?? 'drivly-informe.pdf';
+    const url = URL.createObjectURL(r.data);
+    Object.assign(document.createElement('a'), { href: url, download: nombre }).click();
+    URL.revokeObjectURL(url);
+  },
+
   /** GET /garajes/{id}/metricas/?fecha=YYYY-MM-DD (CU-10) */
   async metricas(id, params = {}) {
     if (USE_MOCKS) return mocks.metricas(id);

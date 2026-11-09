@@ -65,6 +65,7 @@ import com.drivly.app.data.api.GarajeDisponible
 import com.drivly.app.data.api.GarajeOperado
 import com.drivly.app.data.api.Ocupacion
 import com.drivly.app.data.api.PedidoEscaneo
+import com.drivly.app.data.api.PedidoMedio
 import com.drivly.app.data.api.Reserva
 import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.ui.ars
@@ -81,9 +82,9 @@ import com.drivly.app.ui.theme.Hold
 import com.drivly.app.ui.theme.Ink
 import com.drivly.app.ui.theme.Ink700
 import com.drivly.app.ui.theme.JetBrainsMono
+import java.time.OffsetDateTime
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.time.OffsetDateTime
 
 enum class Modo { INGRESO, EGRESO, SIN_LUGAR }
 
@@ -130,11 +131,15 @@ class PlayeroViewModel(private val api: DrivlyApi) : ViewModel() {
     var derivacion by mutableStateOf<Derivacion?>(null)
     var cobro by mutableStateOf<CobroDeuda?>(null)
         private set
+    /** Salida de un cliente sin reserva: falta marcar con qué pagó. */
+    var cobroPresencial by mutableStateOf<Reserva?>(null)
+        private set
+    var cajaAbierta by mutableStateOf(false)
     val movimientos = mutableStateListOf<Reserva>()
 
     val ventana get() = salidaMin ?: ocupacion?.ventanaMin ?: 120
     val sinLugarPresencial get() = ocupacion?.let { it.libresPresencial <= 0 } == true
-    val visorActivo get() = modo != null && !ocupado && cobro == null
+    val visorActivo get() = modo != null && !ocupado && cobro == null && cobroPresencial == null && !cajaAbierta
     val salidas get() = (SALIDAS + (ocupacion?.ventanaMin ?: 120)).distinct().sorted()
 
     init {
@@ -223,12 +228,32 @@ class PlayeroViewModel(private val api: DrivlyApi) : ViewModel() {
         registrar(r.reserva)
         when {
             r.deuda != null -> cobro = CobroDeuda(r.deuda, antesDeIngreso = false)
-            modoActual == Modo.EGRESO && r.reserva.origen == "PRESENCIAL" ->
+            modoActual == Modo.EGRESO && r.reserva.origen == "PRESENCIAL" -> {
                 aviso = Aviso(true, "Egreso registrado. Cobrar ${ars(r.reserva.total)}.")
+                cobroPresencial = r.reserva // abre la elección del medio de pago
+            }
             modoActual == Modo.INGRESO -> aviso = Aviso(true, "Ingreso registrado. Barrera abierta.")
             else -> aviso = Aviso(true, "Egreso registrado. Salida liberada.")
         }
         if (r.ocupacion != null) ocupacion = r.ocupacion else actualizarOcupacion()
+    }
+
+    /** El playero marca con qué le pagó el cliente sin reserva (entra en el cierre de caja). */
+    fun elegirMedio(medio: String) {
+        val r = cobroPresencial ?: return
+        val g = garaje ?: return
+        cobroPresencial = null
+        val nombre = MEDIOS_PRESENCIAL.firstOrNull { it.first == medio }?.second.orEmpty().lowercase()
+        viewModelScope.launch {
+            runCatching { api.marcarMedio(r.id, PedidoMedio(g.id, medio)) }
+                .onSuccess { registrar(it); aviso = Aviso(true, "Cobrado ${ars(r.total)} en $nombre. Salida liberada.") }
+                .onFailure { aviso = Aviso(false, it.comoErrorDrivly().message.orEmpty()) }
+        }
+    }
+
+    /** Cerró la ventana sin elegir: el cobro queda "sin indicar" y en la caja se cuenta como efectivo. */
+    fun medioDespues() {
+        cobroPresencial = null
     }
 
     private suspend fun mostrarError(g: GarajeOperado, error: ErrorDrivly) {
@@ -311,12 +336,21 @@ fun PlayeroScreen(alAbrirPerfil: () -> Unit) {
                     vm::cargarGaraje,
                 )
                 vm.errorCarga != null -> AvisoCarga("No se pudo cargar tu garaje", vm.errorCarga.orEmpty(), vm::cargarGaraje)
-                else -> Operacion(vm)
+                else -> {
+                    Operacion(vm)
+                    if (vm.garaje != null) {
+                        OutlinedButton(onClick = { vm.cajaAbierta = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                            Text("Cerrar caja del día")
+                        }
+                    }
+                }
             }
         }
     }
 
     vm.cobro?.let { DialogoDeuda(it, app.api, alCobrar = vm::deudaCobrada, alSeguirConDeuda = vm::sigueConDeuda) }
+    vm.cobroPresencial?.let { DialogoMedioPresencial(it.patente, it.total, alElegir = vm::elegirMedio, alCerrar = vm::medioDespues) }
+    if (vm.cajaAbierta && garajeId != null) DialogoCaja(app.api, garajeId, alCerrar = { vm.cajaAbierta = false })
 }
 
 @Composable

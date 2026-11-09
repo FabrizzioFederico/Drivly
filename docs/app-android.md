@@ -85,6 +85,9 @@ Con rol `PLAYERO` la app abre `ui/playero/PlayeroScreen.kt`.
 | POST | `operacion/sin-lugar/` | `{ garaje, qr_token }` → `{ reserva, reembolso, cercanos }` |
 | GET | `operacion/deudas/{reserva_id}/` | `{ pagado, transaccion_id }`; se consulta cada 3 s mientras se muestra el QR |
 | POST | `operacion/deudas/{reserva_id}/efectivo/` | Registra el cobro en efectivo |
+| POST | `operacion/presencial/{reserva_id}/medio/` | `{ garaje, medio }` con `EFECTIVO`, `MERCADO_PAGO` o `TRANSFERENCIA`: cómo pagó el cliente sin reserva al salir. Se puede corregir hasta que entra en un cierre (409 después) |
+| GET | `operacion/caja/?garaje=` | Lo cobrado desde el último cierre: `efectivo_esperado`, `presenciales` y `excesos` por medio (`SIN_INDICAR` cuenta como efectivo), `app` y `ultimo_cierre` |
+| POST | `operacion/caja/cerrar/` | `{ garaje, efectivo_contado, observaciones? }` → el cierre con `diferencia` (contado − esperado; negativa es faltante) |
 
 Las fechas van en ISO 8601 con zona horaria. Los errores de negocio responden `{ "detail", "code" }`
 (por ejemplo `SIN_CUPO` con `cercanos`, `GARAJE_SIN_MERCADO_PAGO`, `DEUDA_PENDIENTE`, `ESTADO_INVALIDO`,

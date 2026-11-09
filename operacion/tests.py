@@ -596,3 +596,58 @@ def test_metricas_sin_datos_y_permisos(cliente, admin_garaje, playero, garaje):
     assert m["ocupacion_pico"] == 0 and m["recaudacion_total"] == 0
     assert cliente(admin_garaje).get(url, {"fecha": "ayer"}).status_code == 400
     assert cliente(playero).get(url).status_code == 403
+
+
+# ---------- Caja: medio de cobro de presenciales y cierre del día ----------
+
+CAJA, CERRAR = "/api/operacion/caja/", "/api/operacion/caja/cerrar/"
+
+
+def _presencial_que_sale(c, garaje, patente, minutos=46):
+    """Entra un cliente sin reserva y sale a los `minutos` (1 h = $4.000 con la tarifa de prueba)."""
+    with freeze_time(timezone.now() - timedelta(minutes=minutos)):
+        _presencial(c, garaje, patente)
+    return c.post(EGRESO, {"garaje": str(garaje.id), "patente": patente}, format="json").data["reserva"]
+
+
+def test_cierre_de_caja_cuenta_el_efectivo_y_la_diferencia(cliente, playero, garaje, vehiculo):
+    c = cliente(playero)
+    efectivo = _presencial_que_sale(c, garaje, "AC908KL")
+    mp = _presencial_que_sale(c, garaje, "AD111BB")
+    _presencial_que_sale(c, garaje, "AE222CC")  # sin medio marcado: se cuenta como efectivo
+
+    def marcar(reserva, medio):
+        return c.post(f"/api/operacion/presencial/{reserva['id']}/medio/", {"garaje": str(garaje.id), "medio": medio},
+                      format="json")
+
+    assert marcar(efectivo, "EFECTIVO").status_code == 200
+    assert marcar(mp, "MERCADO_PAGO").data["medio_cobro"] == "MERCADO_PAGO"
+    assert marcar(mp, "CHEQUE").status_code == 400
+    # Un exceso cobrado en efectivo también va a la caja
+    r = con_deuda(garaje, vehiculo)
+    c.post(f"/api/operacion/deudas/{r.id}/efectivo/")
+
+    resumen = c.get(CAJA, {"garaje": str(garaje.id)}).data
+    assert resumen["presenciales"]["EFECTIVO"] == {"cantidad": 1, "total": "4000.00"}
+    assert resumen["presenciales"]["MERCADO_PAGO"]["cantidad"] == 1 and resumen["presenciales"]["SIN_INDICAR"]["cantidad"] == 1
+    assert resumen["excesos"]["EFECTIVO"]["total"] == "3000.00"
+    assert resumen["efectivo_esperado"] == "11000.00"  # 4.000 + 4.000 (sin indicar) + 3.000 del exceso
+
+    cierre = c.post(CERRAR, {"garaje": str(garaje.id), "efectivo_contado": "10500", "observaciones": "faltó cambio"}, format="json")
+    assert cierre.status_code == 201
+    assert cierre.data["diferencia"] == "-500.00" and cierre.data["observaciones"] == "faltó cambio"
+    # Lo que ya entró en un cierre no se vuelve a contar ni se puede cambiar
+    despues = c.get(CAJA, {"garaje": str(garaje.id)}).data
+    assert despues["efectivo_esperado"] == "0.00" and despues["ultimo_cierre"]["diferencia"] == "-500.00"
+    assert marcar(efectivo, "TRANSFERENCIA").status_code == 409
+
+
+def test_caja_y_cierres_solo_del_propio_garaje(cliente, playero, otro_admin, admin_garaje, garaje):
+    otro = Garaje.objects.create(admin=otro_admin, nombre="Otro", cuit="30-71234567-1", direccion="x",
+                                 lat=Decimal("-34.6"), lng=Decimal("-58.4"), capacidad=5)
+    assert cliente(playero).get(CAJA, {"garaje": str(otro.id)}).status_code == 404
+    assert cliente(playero).post(CERRAR, {"garaje": str(garaje.id), "efectivo_contado": "-1"}, format="json").status_code == 400
+    # El admin ve el historial de su garaje
+    cliente(playero).post(CERRAR, {"garaje": str(garaje.id), "efectivo_contado": "0"}, format="json")
+    cierres = cliente(admin_garaje).get("/api/operacion/cierres/", {"garaje": str(garaje.id)}).data
+    assert len(cierres) == 1 and cierres[0]["diferencia"] == "0.00"

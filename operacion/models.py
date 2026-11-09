@@ -37,6 +37,7 @@ ESTADOS_IMPAGOS = (EstadoDeuda.PENDIENTE, EstadoDeuda.INCOBRABLE)
 class MedioCobro(models.TextChoices):
     EFECTIVO = "EFECTIVO", "Efectivo"
     MERCADO_PAGO = "MERCADO_PAGO", "Mercado Pago"
+    TRANSFERENCIA = "TRANSFERENCIA", "Transferencia"  # sólo clientes sin reserva: lo marca el playero al cobrar
 
 
 class Deuda(models.Model):
@@ -57,7 +58,7 @@ class Deuda(models.Model):
     estado = models.CharField(max_length=10, choices=EstadoDeuda.choices, default=EstadoDeuda.PENDIENTE)
     vence_bloqueo = models.DateTimeField()  # desde acá la deuda sigue también a la patente
     recordatorios_enviados = models.PositiveSmallIntegerField(default=0)
-    medio = models.CharField(max_length=12, choices=MedioCobro.choices, blank=True, default="")
+    medio = models.CharField(max_length=13, choices=MedioCobro.choices, blank=True, default="")
     transaccion_id = models.CharField(max_length=32, blank=True, default="")  # payment_id de Mercado Pago
     pagada_en = models.DateTimeField(null=True, blank=True)
     creada_en = models.DateTimeField(auto_now_add=True)
@@ -91,3 +92,27 @@ class Incidente(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_display()} · {self.garaje}"
+
+
+class CierreCaja(models.Model):
+    """
+    Cierre de caja del día: lo hace el playero al terminar. Cubre desde el cierre anterior del garaje hasta ahora,
+    así nada queda afuera si un día no se cerró. Guarda el resumen tal como se vio al cerrar.
+    """
+
+    garaje = models.ForeignKey("garajes.Garaje", on_delete=models.PROTECT, related_name="cierres")
+    cerrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    desde = models.DateTimeField()
+    hasta = models.DateTimeField()
+    efectivo_esperado = models.DecimalField(max_digits=12, decimal_places=2)
+    efectivo_contado = models.DecimalField(max_digits=12, decimal_places=2)
+    diferencia = models.DecimalField(max_digits=12, decimal_places=2)  # contado - esperado: negativo es faltante
+    resumen = models.JSONField(default=dict)
+    observaciones = models.TextField(blank=True, default="")
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-hasta"]
+
+    def __str__(self):
+        return f"Cierre {self.garaje} · {self.hasta:%d/%m/%Y %H:%M} · diferencia {self.diferencia}"
