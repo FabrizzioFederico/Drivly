@@ -108,7 +108,7 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "reservas.exceptions.manejador_errores",
     # Sólo afecta a las vistas con throttle_scope (registro y login con contraseña): limita intentos por IP
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"auth": "10/min"},
+    "DEFAULT_THROTTLE_RATES": {"auth": "10/min", "contacto": "5/hour"},
 }
 
 # Validadores de Django para las cuentas con contraseña (registro desde la app)
@@ -152,6 +152,8 @@ else:
         "default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"},
     }
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Drivly <no-reply@drivly.local>")
+# A dónde llegan los "Sumá tu garaje" de la landing
+DRIVLY_CONTACTO_EMAIL = env("CONTACTO_EMAIL", default="")
 
 # --- Reglas de negocio (documentación, sección 1) --------------------------
 DRIVLY_HOLD_TTL = timedelta(minutes=env.int("HOLD_TTL_MIN", default=5))

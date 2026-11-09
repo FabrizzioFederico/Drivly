@@ -65,7 +65,8 @@ def oauth_callback(request):
         # Error nuestro (base, cifrado...): queda en el log y el admin vuelve a la app con un mensaje, no a un 500.
         logger.exception("Error inesperado guardando la conexión de Mercado Pago")
         resultado = "error"
-    return HttpResponseRedirect(f"{settings.FRONTEND_URL}/?mp_conexion={resultado}")
+    # El portal del admin vive en /panel (en / está la landing)
+    return HttpResponseRedirect(f"{settings.FRONTEND_URL}/panel/?mp_conexion={resultado}")
 
 
 @csrf_exempt

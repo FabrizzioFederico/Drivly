@@ -56,7 +56,7 @@ export default function AdminPortalView({ user }) {
   const [section, setSection] = useState(retornoMP ? 'cobros' : 'garaje');
 
   useEffect(() => {
-    if (retornoMP) window.history.replaceState({}, '', '/');
+    if (retornoMP) window.history.replaceState({}, '', '/panel');
   }, [retornoMP]);
 
   useEffect(() => {

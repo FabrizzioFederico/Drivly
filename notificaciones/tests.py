@@ -254,3 +254,46 @@ def test_sin_firebase_no_se_llama_a_fcm(garaje, vehiculo, conductor, monkeypatch
     monkeypatch.setattr(push.requests, "post", no_llamar)
     Dispositivo.objects.create(usuario=conductor, token="tok-1")
     assert push.enviar(conductor, "Hola", "Prueba") == 0
+
+
+# ---------- Formulario "Sumá tu garaje" de la landing ----------
+
+CONTACTO = "/api/notificaciones/contacto/"
+DATOS_CONTACTO = {"nombre": "Raúl", "email": "raul@garaje.com", "garaje": "Cochera Thames", "telefono": "1155556666",
+                  "zona": "Palermo", "mensaje": "Tenemos 40 lugares."}
+
+
+@pytest.fixture
+def contacto(settings):
+    from django.core.cache import cache
+
+    cache.clear()  # el límite de envíos por hora se guarda en la caché
+    settings.DRIVLY_CONTACTO_EMAIL = "equipo@drivly.test"
+
+
+def test_contacto_le_llega_al_equipo_y_se_responde_al_garaje(cliente, contacto):
+    r = cliente().post(CONTACTO, DATOS_CONTACTO, format="json")
+    assert r.status_code == 201
+    correo = mail.outbox[0]
+    assert correo.to == ["equipo@drivly.test"] and correo.reply_to == ["raul@garaje.com"]
+    assert "Cochera Thames" in correo.subject and "Tenemos 40 lugares." in correo.body and "Palermo" in correo.body
+
+
+def test_contacto_de_un_bot_se_descarta(cliente, contacto):
+    r = cliente().post(CONTACTO, {**DATOS_CONTACTO, "sitio_web": "http://spam.test"}, format="json")
+    assert r.status_code == 202 and not mail.outbox
+
+
+def test_contacto_valida_y_limita_los_envios(cliente, contacto):
+    from django.core.cache import cache
+
+    assert cliente().post(CONTACTO, {"nombre": "X"}, format="json").status_code == 400
+    cache.clear()  # el envío inválido también cuenta para el límite: se arranca de cero
+    c = cliente()
+    estados = [c.post(CONTACTO, DATOS_CONTACTO, format="json").status_code for _ in range(6)]
+    assert estados[:5] == [201] * 5 and estados[5] == 429
+
+
+def test_contacto_sin_destino_configurado(cliente, contacto, settings):
+    settings.DRIVLY_CONTACTO_EMAIL = ""
+    assert cliente().post(CONTACTO, DATOS_CONTACTO, format="json").status_code == 503

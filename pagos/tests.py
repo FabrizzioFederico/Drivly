@@ -309,7 +309,7 @@ def test_callback_guarda_tokens_cifrados(cliente, garaje, token_mp):
     ConexionMP.objects.all().delete()
     state = oauth.url_autorizacion(garaje.admin, garaje).split("state=")[1]
     r = cliente().get("/api/pagos/oauth/callback/", {"code": "TG-code", "state": state})
-    assert r.status_code == 302 and r["Location"] == "http://localhost:5173/?mp_conexion=ok"
+    assert r.status_code == 302 and r["Location"] == "http://localhost:5173/panel/?mp_conexion=ok"
     assert token_mp.pedidos[0] == {
         "client_id": "app-de-tests", "client_secret": "client-secret-de-tests", "grant_type": "authorization_code",
         "code": "TG-code", "redirect_uri": "http://localhost:8000/api/pagos/oauth/callback/",

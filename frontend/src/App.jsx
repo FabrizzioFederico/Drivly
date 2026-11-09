@@ -4,6 +4,7 @@ import { Alert, Avatar, Box, Button, Card, CardContent, Stack, Typography } from
 import { authService } from './api/authService';
 import { USE_MOCKS } from './api/client';
 import AdminPortalView from './views/AdminPortalView';
+import LandingView from './views/LandingView';
 
 const HAS_GOOGLE = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
@@ -37,6 +38,7 @@ function Login({ onLogin }) {
               <Button variant="outlined" onClick={() => handle('demo')} disabled={busy}>{busy ? 'Ingresando…' : 'Acceso rápido de desarrollo'}</Button>
             )}
             {error && <Alert severity="error">{error}</Alert>}
+            <Button href="/" variant="text" size="small" sx={{ alignSelf: 'flex-start', color: 'text.secondary' }}>← Volver al sitio</Button>
           </Stack>
         </CardContent>
       </Card>
@@ -44,10 +46,14 @@ function Login({ onLogin }) {
   );
 }
 
-export default function App() {
+/** /panel (y lo que cuelga de ahí) es el portal de los dueños; cualquier otra dirección muestra la landing. */
+const enElPanel = () => /^\/panel(\/|$)/.test(window.location.pathname);
+
+function Panel() {
   const [user, setUser] = useState(() => authService.sesionGuardada());
 
   useEffect(() => {
+    document.title = 'Drivly · Panel de garajes';
     const onLogout = () => setUser(null);
     window.addEventListener('drivly:logout', onLogout);
     return () => window.removeEventListener('drivly:logout', onLogout);
@@ -55,4 +61,8 @@ export default function App() {
 
   if (!user) return <Login onLogin={setUser} />;
   return <AdminPortalView user={user} />;
+}
+
+export default function App() {
+  return enElPanel() ? <Panel /> : <LandingView />;
 }
