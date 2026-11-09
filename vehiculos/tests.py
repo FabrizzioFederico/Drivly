@@ -238,3 +238,77 @@ def test_datacar_real_sin_key_no_consulta(datacar_real, settings, conductor, cli
     settings.DATACAR_API_KEY = ""
     r = alta(cliente, conductor, "AB123CD")
     assert r.data["requiere_declaracion"] and llamadas == []
+
+
+# --- Foto ilustrativa del vehículo (sin red: se simula requests.get) ---
+
+from integraciones import imagenes  # noqa: E402
+
+BUSCAR_FOTO = imagenes.buscar  # la original: conftest la reemplaza por "sin foto" en cada test
+
+
+class _Redireccion:
+    def __init__(self, destino, credito=""):
+        self.status_code = 302
+        self.headers = {"location": destino, "x-image-attribution": credito}
+
+
+def test_foto_prueba_el_modelo_completo_y_despues_el_base(monkeypatch):
+    pedidos = []
+
+    def falso_get(url, params, allow_redirects, timeout):
+        pedidos.append(params["model"])
+        if params["model"] == "Kangoo":
+            return _Redireccion("https://cdn.trustcar.info/carphotos/abc.jpg", "Renault Kangoo — © Autor (CC BY-SA 4.0)")
+        return _Redireccion("https://trustcar.info/assets/img/car-placeholder.svg")
+
+    monkeypatch.setattr(imagenes.requests, "get", falso_get)
+    foto = BUSCAR_FOTO("RENAULT", "KANGOO II EXPRESS EMOTION", 2020)
+    assert pedidos == ["Kangoo Ii Express Emotion", "Kangoo"]
+    assert foto.url == "https://cdn.trustcar.info/carphotos/abc.jpg" and "CC BY-SA" in foto.credito
+
+
+@pytest.mark.parametrize("respuesta", [
+    _Redireccion("https://trustcar.info/assets/img/car-placeholder.svg"),  # no conoce el vehículo
+    __import__("requests").Timeout(),                                      # servicio caído
+])
+def test_sin_foto_si_no_la_encuentra_o_falla(monkeypatch, respuesta):
+    def falso_get(*a, **k):
+        if isinstance(respuesta, Exception):
+            raise respuesta
+        return respuesta
+
+    monkeypatch.setattr(imagenes.requests, "get", falso_get)
+    assert BUSCAR_FOTO("CORMETAL", "S-2", 2017) is None
+    assert BUSCAR_FOTO("", "", None) is None  # sin datos de DataCar ni siquiera consulta
+
+
+def test_alta_guarda_la_foto_y_su_credito(datacar_real, conductor, cliente, monkeypatch):
+    datacar_real[1]["valor"] = _exito("SEDAN 4 PUERTAS")
+    monkeypatch.setattr(imagenes, "buscar", lambda marca, modelo, anio: imagenes.Foto(
+        url="https://cdn.trustcar.info/carphotos/abc.jpg", credito="Renault Kangoo — © Autor (CC BY-SA 4.0)"))
+    r = alta(cliente, conductor, "AB123CD")
+    assert r.data["imagen_url"] == "https://cdn.trustcar.info/carphotos/abc.jpg"
+    assert r.data["imagen_credito"].startswith("Renault Kangoo")
+
+
+def test_foto_con_la_version_pegada_al_numero(monkeypatch):
+    """DataCar manda "504XSDTCADA": si no hay foto con eso, se prueba con "504"."""
+    pedidos = []
+
+    def falso_get(url, params, allow_redirects, timeout):
+        pedidos.append(params["model"])
+        if params["model"] == "504":
+            return _Redireccion("https://cdn.trustcar.info/carphotos/504.jpg", "Peugeot 504 — © Autor (CC BY-SA 4.0)")
+        return _Redireccion("https://trustcar.info/assets/img/car-placeholder.svg")
+
+    monkeypatch.setattr(imagenes.requests, "get", falso_get)
+    assert BUSCAR_FOTO("PEUGEOT", "504XSDTCADA", 1995).url.endswith("/504.jpg")
+    assert pedidos == ["504Xsdtcada", "504"]
+
+
+def test_credito_con_guion_y_copyright_se_guarda_bien(monkeypatch):
+    """Los encabezados HTTP llegan como Latin-1: el "—" y el "©" en UTF-8 no se tienen que romper."""
+    crudo = "Peugeot 504 — © Joost J. Bakker (CC BY 2.0), via Wikimedia Commons".encode("utf-8").decode("latin-1")
+    monkeypatch.setattr(imagenes.requests, "get", lambda *a, **k: _Redireccion("https://cdn.trustcar.info/x.jpg", crudo))
+    assert BUSCAR_FOTO("PEUGEOT", "504", 1995).credito == "Peugeot 504 — © Joost J. Bakker (CC BY 2.0), via Wikimedia Commons"

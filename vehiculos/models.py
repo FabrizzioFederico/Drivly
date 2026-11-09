@@ -68,6 +68,9 @@ class Vehiculo(models.Model):
     modelo = models.CharField(max_length=120, blank=True, default="")
     anio = models.PositiveSmallIntegerField(null=True, blank=True)
     tipo = models.CharField(max_length=60, blank=True, default="")  # clasificación tal como la manda DataCar
+    # Foto ilustrativa del modelo (integraciones.imagenes) y su crédito, que la licencia CC BY-SA obliga a mostrar
+    imagen_url = models.URLField(max_length=500, blank=True, default="")
+    imagen_credito = models.CharField(max_length=200, blank=True, default="")
 
     class Meta:
         ordering = ["-creado_en"]

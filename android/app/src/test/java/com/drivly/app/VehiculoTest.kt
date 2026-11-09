@@ -18,6 +18,21 @@ class VehiculoTest {
     }
 
     @Test
+    fun `credito de la foto corto y sin el modelo`() {
+        val v = vehiculo("""{"id":"1","patente":"ABC123","estado_validacion":"VALIDADO",
+            "imagen_url":"https://cdn.trustcar.info/x.jpg",
+            "imagen_credito":"Peugeot 504 — © Joost J. Bakker (CC BY 2.0), via Wikimedia Commons"}""")
+        assertEquals("© Joost J. Bakker · CC BY 2.0 · Wikimedia Commons", v.creditoFoto)
+    }
+
+    @Test
+    fun `credito con otro formato se muestra tal cual y sin foto no hay credito`() {
+        val v = vehiculo("""{"id":"1","patente":"ABC123","estado_validacion":"VALIDADO","imagen_credito":"Foto de Juan"}""")
+        assertEquals("Foto de Juan", v.creditoFoto)
+        assertNull(vehiculo("""{"id":"1","patente":"ABC123","estado_validacion":"VALIDADO"}""").creditoFoto)
+    }
+
+    @Test
     fun `sin datos de DataCar no hay descripcion`() {
         assertNull(vehiculo("""{"id":"1","patente":"A123BCD","estado_validacion":"VALIDADO"}""").descripcion)
     }

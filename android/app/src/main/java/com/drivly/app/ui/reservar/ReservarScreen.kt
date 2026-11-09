@@ -1,9 +1,14 @@
 package com.drivly.app.ui.reservar
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,12 +16,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,10 +45,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -61,6 +74,7 @@ import com.drivly.app.data.api.PedidoVehiculo
 import com.drivly.app.data.api.Reserva
 import com.drivly.app.data.api.Vehiculo
 import com.drivly.app.data.comoErrorDrivly
+import com.drivly.app.data.descargarImagen
 import com.drivly.app.ui.ars
 import com.drivly.app.ui.components.EstadoChip
 import com.drivly.app.ui.components.ListaCercanos
@@ -72,9 +86,9 @@ import com.drivly.app.ui.iso
 import com.drivly.app.ui.periodo
 import com.drivly.app.ui.theme.DrivlyTheme
 import com.drivly.app.ui.theme.JetBrainsMono
+import java.time.OffsetDateTime
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.time.OffsetDateTime
 
 class ReservarViewModel(
     private val api: DrivlyApi,
@@ -285,6 +299,7 @@ private fun SeccionVehiculos(vm: ReservarViewModel) {
                 ) {
                     RadioButton(selected = vm.elegido == v.id, onClick = null, enabled = v.validado)
                     Spacer(Modifier.padding(4.dp))
+                    FotoVehiculo(v)
                     Column(Modifier.weight(1f)) {
                         Text(v.patente, style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMono,
                             fontWeight = FontWeight.Bold))
@@ -401,5 +416,45 @@ private fun PrecioEstimado(c: Cotizacion) {
             Text("Sin cargos extra: la comisión de Drivly la paga el garaje.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+private val SIN_FOTO = Any()
+
+/** Foto ilustrativa del modelo (la busca el backend una vez, al dar de alta el vehículo). */
+@Composable
+private fun FotoVehiculo(v: Vehiculo) {
+    // Sin foto guardada, o si no se pudo descargar: "Sin imagen", del mismo tamaño para que las filas queden alineadas.
+    // null mientras descarga; después, la foto o SIN_FOTO.
+    val foto by produceState<Any?>(if (v.imagenUrl.isBlank()) SIN_FOTO else null, v.imagenUrl) {
+        if (v.imagenUrl.isNotBlank()) value = descargarImagen(v.imagenUrl) ?: SIN_FOTO
+    }
+    var verCredito by remember { mutableStateOf(false) }
+
+    Box(
+        Modifier.padding(end = 12.dp).size(width = 72.dp, height = 48.dp).clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            // La licencia de la foto obliga a mostrar el autor: se ve al tocarla
+            .then(if (foto is Bitmap && v.creditoFoto != null) Modifier.clickable(onClickLabel = "Ver el autor de la foto") { verCredito = true } else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (val imagen = foto) {
+            is Bitmap -> Image(imagen.asImageBitmap(), contentDescription = v.descripcion?.let { d -> "Foto de un $d" },
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            SIN_FOTO -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Filled.DirectionsCar, contentDescription = null, Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Sin imagen", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    if (verCredito) {
+        AlertDialog(
+            onDismissRequest = { verCredito = false },
+            confirmButton = { TextButton(onClick = { verCredito = false }) { Text("Cerrar") } },
+            title = { Text("Foto ilustrativa") },
+            text = { Text("Es una foto del modelo, no de tu vehículo.\n\n${v.creditoFoto}") },
+        )
     }
 }

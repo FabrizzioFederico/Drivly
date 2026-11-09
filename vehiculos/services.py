@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from integraciones import imagenes
 from integraciones.datacar import (
     PatenteNoEncontrada,
     ServicioPatenteNoDisponible,
@@ -59,10 +60,12 @@ def validar_vehiculo(vehiculo: Vehiculo, gateway=None) -> Vehiculo:
             # Se guardan aunque el tipo no tenga traducción: el conductor ve qué vehículo encontró DataCar
             vehiculo.marca, vehiculo.modelo = resultado.marca, resultado.modelo
             vehiculo.anio, vehiculo.tipo = resultado.anio, resultado.clasificacion[:60]
+            foto = imagenes.buscar(resultado.marca, resultado.modelo, resultado.anio)
+            vehiculo.imagen_url, vehiculo.imagen_credito = (foto.url, foto.credito) if foto else ("", "")
             if resultado.categoria:  # DataCar prevalece sobre una declaración
                 _asignar(vehiculo, resultado.categoria, OrigenCategoria.DATACAR)
     vehiculo.save(update_fields=["categoria", "categoria_origen", "estado_validacion", "validado_en",
-                                 "marca", "modelo", "anio", "tipo"])
+                                 "marca", "modelo", "anio", "tipo", "imagen_url", "imagen_credito"])
     return vehiculo
 
 

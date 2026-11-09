@@ -42,6 +42,8 @@ def _aislar_de_datacar(settings, monkeypatch):
     settings.DATACAR_MOCK = True
     settings.DATACAR_API_KEY = ""
     monkeypatch.setattr("integraciones.datacar.requests.get", _datacar_bloqueado)
+    # La foto del vehículo tampoco sale a internet: sin foto, salvo en los tests que la simulan
+    monkeypatch.setattr("integraciones.imagenes.buscar", lambda *a, **k: None)
 
 
 @pytest.fixture(autouse=True)

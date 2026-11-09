@@ -64,11 +64,25 @@ data class Vehiculo(
     val modelo: String = "",
     val anio: Int? = null,
     val tipo: String = "",
+    /** Foto ilustrativa del modelo (Wikimedia Commons) y su crédito, que la licencia CC BY-SA obliga a mostrar. */
+    @SerialName("imagen_url") val imagenUrl: String = "",
+    @SerialName("imagen_credito") val imagenCredito: String = "",
     /** Última consulta a DataCar: OK, NO_ENCONTRADA o ERROR (null si no se consultó, como en las motos). */
     @SerialName("consulta_datacar") val consultaDatacar: String? = null,
 ) {
     val validado get() = estadoValidacion == "VALIDADO"
     val rechazado get() = estadoValidacion == "RECHAZADO"
+
+    /**
+     * "Peugeot 504 — © Joost J. Bakker (CC BY 2.0), via Wikimedia Commons" -> "© Joost J. Bakker · CC BY 2.0 ·
+     * Wikimedia Commons": sin el modelo (ya está arriba) y corto para una línea. Si cambia el formato, va tal cual.
+     */
+    val creditoFoto: String?
+        get() {
+            val sinModelo = imagenCredito.substringAfter(" — ", imagenCredito).trim()
+            val partes = Regex("""^(©\s*.+?)\s*\((CC[^)]*)\),?\s*(?:via\s+)?(.*)$""").find(sinModelo)?.groupValues
+            return (partes?.drop(1)?.filter { it.isNotBlank() }?.joinToString(" · ") ?: sinModelo).ifBlank { null }
+        }
 
     /** Por qué todavía no tiene categoría, para mostrarle al conductor. */
     val motivoSinCategoria: String

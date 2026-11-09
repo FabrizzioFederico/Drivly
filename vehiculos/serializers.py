@@ -18,12 +18,12 @@ class VehiculoSerializer(serializers.ModelSerializer):
         fields = [
             "id", "patente", "categoria", "categoria_origen", "estado_validacion",
             "requiere_declaracion", "puede_declarar", "validado_en", "creado_en",
-            "marca", "modelo", "anio", "tipo", "consulta_datacar",
+            "marca", "modelo", "anio", "tipo", "imagen_url", "imagen_credito", "consulta_datacar",
         ]
         # La categoría nunca se manda en el alta: se declara aparte y sólo si DataCar no la resolvió.
         # Marca, modelo, año y tipo los completa DataCar.
         read_only_fields = ["id", "categoria", "categoria_origen", "estado_validacion", "validado_en", "creado_en",
-                            "marca", "modelo", "anio", "tipo"]
+                            "marca", "modelo", "anio", "tipo", "imagen_url", "imagen_credito"]
 
     def validate_patente(self, valor):
         patente = normalizar_patente(valor)
