@@ -20,6 +20,7 @@ import EquipoPanel from './admin/EquipoPanel';
 import GarajePanel from './admin/GarajePanel';
 import MonitorPanel from './admin/MonitorPanel';
 import TarifasPanel from './admin/TarifasPanel';
+import LogoDrivly from '../components/LogoDrivly';
 
 const ANCHO_MENU = 272;
 const ANCHO_ICONOS = 72;
@@ -80,7 +81,7 @@ export default function AdminPortalView({ user }) {
           <IconButton color="inherit" edge="start" onClick={alternarMenu} aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={abierto}>
             <MenuIcon />
           </IconButton>
-          <Avatar variant="rounded" sx={{ width: 32, height: 32, bgcolor: 'var(--accent)', color: 'var(--bg)', fontSize: 16, fontWeight: 700 }}>D</Avatar>
+          <LogoDrivly tamano={32} />
           <Typography sx={{ fontWeight: 700 }}>Drivly</Typography>
           {USE_MOCKS && <Chip label="DATOS SIMULADOS" size="small" color="warning" sx={{ fontWeight: 700 }} />}
           <Box sx={{ flexGrow: 1 }} />

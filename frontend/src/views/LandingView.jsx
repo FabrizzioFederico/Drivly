@@ -15,18 +15,15 @@ import Search from '@mui/icons-material/Search';
 import TrendingUp from '@mui/icons-material/TrendingUp';
 import Undo from '@mui/icons-material/Undo';
 import client from '../api/client';
+import LogoDrivly from '../components/LogoDrivly';
 
 const PANEL = '/panel';
 const ENLACES = [['#como-funciona', 'Cómo funciona'], ['#garajes', 'Para garajes'], ['#preguntas', 'Preguntas'], ['#contacto', 'Contacto']];
 
-/** Logo de Drivly. Cuando esté el archivo definitivo (frontend/public), se cambia sólo acá. */
 function Marca({ tamano = 32 }) {
   return (
     <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-      <Box sx={{
-        width: tamano, height: tamano, borderRadius: 1.5, display: 'grid', placeItems: 'center',
-        bgcolor: 'var(--accent)', color: 'var(--bg)', fontWeight: 800, fontSize: tamano * 0.55,
-      }}>D</Box>
+      <LogoDrivly tamano={tamano} />
       <Typography sx={{ fontWeight: 700, fontSize: tamano * 0.62 }}>Drivly</Typography>
     </Stack>
   );

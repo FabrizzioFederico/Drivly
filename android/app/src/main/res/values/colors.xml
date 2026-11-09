@@ -2,5 +2,8 @@
 <resources>
     <!-- Fondo de la ventana mientras arranca Compose: el mismo del tema (Paper / Ink) para que no haya destello -->
     <color name="fondo_ventana">#FFF8F9FA</color>
-    <color name="marca">#FF0066FF</color>
+    <!-- Teal del logo, el mismo acento que la web -->
+    <color name="marca">#FF00C2A8</color>
+    <!-- Círculo del ícono en la pantalla de inicio: negro, como el fondo del logo -->
+    <color name="fondo_logo">#FF000000</color>
 </resources>

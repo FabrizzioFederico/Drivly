@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
-import { Alert, Avatar, Box, Button, Card, CardContent, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Stack, Typography } from '@mui/material';
 import { authService } from './api/authService';
 import { USE_MOCKS } from './api/client';
+import LogoDrivly from './components/LogoDrivly';
 import AdminPortalView from './views/AdminPortalView';
 import LandingView from './views/LandingView';
 
@@ -24,7 +25,7 @@ function Login({ onLogin }) {
         <CardContent sx={{ p: 4 }}>
           <Stack spacing={2.5}>
             <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-              <Avatar variant="rounded" sx={{ bgcolor: 'var(--accent)', color: 'var(--bg)', fontWeight: 700 }}>D</Avatar>
+              <LogoDrivly tamano={40} />
               <Typography sx={{ fontSize: 24, fontWeight: 700 }}>Drivly</Typography>
             </Stack>
             <Box>

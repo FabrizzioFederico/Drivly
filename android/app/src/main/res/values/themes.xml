@@ -8,8 +8,8 @@
     <!-- Pantalla de inicio (core-splashscreen): la "P" de Drivly sobre círculo azul; después pasa a Theme.Drivly -->
     <style name="Theme.Drivly.Inicio" parent="Theme.SplashScreen.IconBackground">
         <item name="windowSplashScreenBackground">@color/fondo_ventana</item>
-        <item name="windowSplashScreenIconBackgroundColor">@color/marca</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/fondo_logo</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.Drivly</item>
     </style>
 </resources>
