@@ -6,7 +6,7 @@ Marketplace de reservas anticipadas de estacionamiento en Buenos Aires. Trabajo 
 |---|---|---|
 | API REST (Django, DRF, PostgreSQL, Celery) | raíz del repo | La app y el portal |
 | App Android (Kotlin, Jetpack Compose) | `android/` | Conductores y playeros |
-| Portal web (React, Vite, Material UI) | `frontend/` | Administradores de garajes |
+| Web (React, Vite, Material UI) | `frontend/` | Landing pública en `/` y panel de los administradores en `/panel` |
 
 ## Levantar el entorno de desarrollo
 
@@ -33,15 +33,28 @@ celery -A backend beat -l info
 Celery necesita Redis (lo levanta `docker compose up -d`). Después de cambiar el `.env` hay que reiniciar Django y
 los dos procesos de Celery: con Ctrl+C en cada terminal y volviendo a correr el comando.
 
-Sin Celery no se marcan los holds vencidos como expirados, no se reintentan los reembolsos y no salen los recordatorios de deuda.
+Sin Celery no se marcan los holds vencidos como expirados, no se reintentan los reembolsos ni los comprobantes, y no salen los recordatorios (de inicio, de fin y de deuda).
 
-El portal web:
+## Emails y notificaciones push
+
+Los comprobantes (con el QR de la reserva), la activación de cuentas, los recordatorios de deuda y el formulario
+"Sumá tu garaje" salen por email. Sin `EMAIL_HOST` en el `.env` se imprimen en la consola. Con Gmail se usa una
+contraseña de aplicación; el formulario de la landing llega a `CONTACTO_EMAIL`.
+
+Los push usan Firebase Cloud Messaging: `FCM_PROJECT_ID` en el `.env` y la clave de la cuenta de servicio en
+`firebase-cuenta-servicio.json` (en la raíz, fuera del repo). La app toma los datos de Firebase de
+`android/local.properties` (ver [docs/app-android.md](docs/app-android.md)). Sin esa configuración todo funciona igual, sin push.
+
+## Web
+
 
 ```bash
 cd frontend
 npm install
-npm run dev                           # http://localhost:5173
+npm run dev                           # http://localhost:5173 (landing) y /panel (administradores)
 ```
+
+El logo original y los diseños de la landing están en `branding/`; en `frontend/public/` van las versiones livianas.
 
 La app se abre desde `android/` con Android Studio. Su configuración local está en [docs/app-android.md](docs/app-android.md).
 
@@ -61,4 +74,6 @@ cd frontend && npm run build
 
 ## Estado
 
-El despliegue en producción está pendiente. La categoría del vehículo sale de DataCar (`DATACAR_MOCK=False` y `DATACAR_API_KEY`); en desarrollo conviene el simulador (`DATACAR_MOCK=True`), que no gasta saldo.
+El despliegue en producción está pendiente. Las fotos de los modelos de auto salen de un servicio no documentado
+(carapi.trustcar.info): para producción conviene guardarlas en el servidor. Para buscar la foto de los autos ya cargados,
+sin gastar consultas de DataCar: `python manage.py buscar_fotos`. La categoría del vehículo sale de DataCar (`DATACAR_MOCK=False` y `DATACAR_API_KEY`); en desarrollo conviene el simulador (`DATACAR_MOCK=True`), que no gasta saldo.

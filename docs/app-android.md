@@ -1,7 +1,7 @@
 # App Android — contrato con el backend
 
 La app Kotlin (carpeta `android/`) es el único cliente de conductores y playeros.
-La web (`frontend/`) es sólo el portal de los administradores.
+La web (`frontend/`) tiene la landing pública (`/`) y el portal de los administradores (`/panel`).
 
 ## Configuración local
 
