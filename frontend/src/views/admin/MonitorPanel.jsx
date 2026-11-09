@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert, Box, Button, Card, Chip, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
+  Alert, Button, Card, Chip, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import { garajesService } from '../../api/garajesService';
 import { reservasService } from '../../api/reservasService';
@@ -11,10 +11,10 @@ import { ars, CATEGORIA_LABEL, hora } from '../../lib/format';
 import { useEnVivo } from '../../lib/useEnVivo';
 import { MONO } from '../../theme';
 import { Encabezado, Leyenda, Seccion } from './comun';
+import GraficoOcupacion, { SERIE_APP, SERIE_PRESENCIAL } from './GraficoOcupacion';
 
 const FILTROS = ['TODOS', 'HOLD', 'CONFIRMADA', 'EN_CURSO', 'CON_DEUDA', 'SIN_LUGAR'];
 const COLUMNAS = ['ID reserva', 'Patente', 'Categoría', 'Tipo', 'Horario', 'Estado', 'Importe'];
-const ALTO_GRAFICO = 220;
 
 // Para el Excel: los mismos nombres que el backend (reservas/models.py)
 const ORIGEN_LABEL = { APP: 'App', PRESENCIAL: 'Presencial' };
@@ -26,44 +26,6 @@ const ESTADO_LABEL = {
 
 const tipo = (r) => (r.origen !== 'APP' ? 'Sin reserva' : r.modalidad && r.modalidad !== 'HORA' ? `Abono ${r.modalidad.toLowerCase()}` : 'App');
 const horario = (r) => (r.modalidad && !['HORA', 'PRESENCIAL'].includes(r.modalidad) ? `hasta ${new Date(r.fin).toLocaleDateString('es-AR')}` : `${hora(r.inicio)}–${hora(r.fin)}`);
-
-function Grafico({ ocupacion }) {
-  const total = ocupacion?.capacidad ?? 80;
-  const umbral = Math.round(total * (ocupacion?.umbral_alerta ?? 0.9));
-  const H = ALTO_GRAFICO;
-  const nowH = new Date().getHours();
-  const franjas = ocupacion?.franjas ?? [];
-  const columnas = `repeat(${franjas.length || 18}, minmax(0, 1fr))`;
-
-  return (
-    <Box sx={{ overflowX: 'auto' }}>
-      <Box sx={{ minWidth: 640 }}>
-        <Box sx={{ position: 'relative', display: 'grid', alignItems: 'end', gap: 1, height: H, gridTemplateColumns: columnas, borderBottom: 1.5, borderColor: 'divider' }}>
-          <Box sx={{ position: 'absolute', left: 0, right: 0, bottom: (umbral / total) * H, borderTop: '2px dashed var(--warning)' }} />
-          <Typography variant="caption" sx={{ color: 'warning.main', position: 'absolute', right: 0, bottom: (umbral / total) * H + 2, bgcolor: 'background.paper', pl: 0.75, fontWeight: 700 }}>{umbral} / {total}</Typography>
-          {franjas.map((f) => {
-            const over = f.app + f.presencial >= umbral;
-            return (
-              <Tooltip key={f.hora} arrow title={`${f.hora}:00 · App y abonos ${f.app} · Sin reserva ${f.presencial}${over ? ' · ⚠' : ''}`}>
-                <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '2px', opacity: f.proyectada ? 0.45 : 1 }}>
-                  <Box sx={{ height: (f.presencial / total) * H, bgcolor: 'var(--text-muted)', borderRadius: '4px 4px 0 0' }} />
-                  <Box sx={{ height: (f.app / total) * H, bgcolor: 'primary.main', ...(f.hora === nowH ? { outline: '2px solid var(--text-primary)', outlineOffset: 2 } : {}) }} />
-                </Box>
-              </Tooltip>
-            );
-          })}
-        </Box>
-        <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: columnas, mt: 1 }}>
-          {franjas.map((f) => (
-            <Typography key={f.hora} variant="caption" sx={{ textAlign: 'center', fontFamily: MONO, fontWeight: f.hora === nowH ? 800 : 400, color: f.hora === nowH ? 'text.primary' : 'text.secondary' }}>
-              {String(f.hora).padStart(2, '0')}
-            </Typography>
-          ))}
-        </Box>
-      </Box>
-    </Box>
-  );
-}
 
 /** C2 · Monitor en vivo y reportes (CU-10) */
 export default function MonitorPanel({ garajeId }) {
@@ -143,13 +105,13 @@ export default function MonitorPanel({ garajeId }) {
         detalle="Real hasta ahora · proyección según reservas confirmadas"
         accion={(
           <Stack direction="row" spacing={2}>
-            <Leyenda color="primary.main">App y abonos</Leyenda>
-            <Leyenda color="var(--text-muted)">Sin reserva</Leyenda>
+            <Leyenda color={SERIE_APP}>App y abonos</Leyenda>
+            <Leyenda color={SERIE_PRESENCIAL}>Sin reserva</Leyenda>
             <Leyenda color="var(--warning)">Alerta {Math.round((ocupacion?.umbral_alerta ?? 0.9) * 100)}%</Leyenda>
           </Stack>
         )}
       >
-        <Grafico ocupacion={ocupacion} />
+        <GraficoOcupacion ocupacion={ocupacion} />
       </Seccion>
 
       <Card>

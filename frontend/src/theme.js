@@ -2,7 +2,7 @@ import { createTheme } from '@mui/material/styles';
 
 // Único lugar con los colores del portal: dark flat, profundidad por capas tonales (bg → surface-1 → surface-2).
 // Se publican como variables CSS: en los componentes usar var(--surface-2), var(--text-muted), etc.
-const T = {
+export const T = {
   bg: '#0B0B0C',
   'surface-1': '#151517',
   'surface-2': '#1E1E21',

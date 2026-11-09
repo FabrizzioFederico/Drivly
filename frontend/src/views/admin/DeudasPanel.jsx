@@ -5,6 +5,7 @@ import {
 import { operacionService } from '../../api/operacionService';
 import VehiclePlateBadge from '../../components/VehiclePlateBadge';
 import { ars } from '../../lib/format';
+import { useEnVivo } from '../../lib/useEnVivo';
 import { Encabezado } from './comun';
 
 function CondonarDialogo({ deuda, onHecho, onCancelar }) {
