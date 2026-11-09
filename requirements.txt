@@ -9,6 +9,7 @@ google-auth          # validar el ID token de Google OAuth
 mercadopago          # SDK oficial de Mercado Pago
 cryptography         # cifrado de los tokens OAuth de los garajes
 Pillow               # fotos de perfil (ImageField): se achican y recomprimen al subirlas
+segno==1.6.6         # QR de la reserva dentro del comprobante por email
 celery[redis]
 requests
 gunicorn

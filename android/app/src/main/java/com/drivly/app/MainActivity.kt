@@ -42,6 +42,13 @@ class MainActivity : ComponentActivity() {
             return
         }
         val uri = intent?.data ?: return
-        if (uri.scheme == "drivly" && uri.host == "pago-resultado") deepLinks.value = uri
+        if (uri.scheme != "drivly") return
+        when (uri.host) {
+            "pago-resultado" -> deepLinks.value = uri
+            // Comprobante por email: drivly://reserva/<id> abre el ticket, igual que tocar una notificación
+            "reserva" -> uri.lastPathSegment?.let { id ->
+                deepLinks.value = Uri.parse("drivly://aviso?tipo=reserva&reserva_id=${Uri.encode(id)}")
+            }
+        }
     }
 }

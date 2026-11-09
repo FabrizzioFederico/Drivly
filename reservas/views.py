@@ -1,8 +1,9 @@
 from django.conf import settings
+from django.http import Http404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -39,6 +40,15 @@ class ReservaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
         if params.get("garaje"):
             qs = qs.filter(garaje_id=params["garaje"])
         return qs
+
+    def get_object(self):
+        # El 404 por defecto ("No Reserva matches the given query.") llega a la app tal cual: mejor uno claro.
+        # Pasa sobre todo al abrir el link de un comprobante con otra cuenta iniciada.
+        try:
+            return super().get_object()
+        except Http404:
+            raise NotFound("No encontramos esa reserva en tu cuenta. Si te llegó por email, ingresá con la cuenta "
+                           "que la hizo.")
 
     def _mia(self):
         reserva = self.get_object()

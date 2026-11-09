@@ -1,3 +1,4 @@
+from django.shortcuts import render
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -30,3 +31,17 @@ class DispositivosView(APIView):
         token = str(request.data.get("token", ""))
         Dispositivo.objects.filter(usuario=request.user, token=token).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def abrir_reserva(request, reserva_id):
+    """
+    GET /api/notificaciones/reserva/<id>/ — el botón "Ver mi reserva en la app" del comprobante.
+    Gmail no deja tocar links drivly://, así que el email apunta acá y esta página abre la app en el ticket.
+    No muestra datos de la reserva: la app los pide con la sesión del conductor.
+    """
+    destino = f"reserva/{reserva_id}"
+    return render(request, "notificaciones/abrir_reserva.html", {
+        "link_app": f"drivly://{destino}",
+        # Chrome en Android abre la app con intent:// aunque no venga de un toque directo
+        "link_android": f"intent://{destino}#Intent;scheme=drivly;package=com.drivly.app;end",
+    })

@@ -5,7 +5,9 @@
 {{ etiqueta }}: {{ valor }}{% endfor %}
 
 Total: {{ total }}
-
+{% if boton %}
+{{ boton.0 }}: {{ boton.1 }}
+{% endif %}
 {{ nota }}
 
 Drivly

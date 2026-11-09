@@ -4,10 +4,13 @@ Avisos al conductor: comprobantes por email y notificaciones push.
 Cada aviso se registra en `Aviso` antes de mandarlo, así un mismo comprobante sale una sola vez aunque
 Mercado Pago notifique el pago varias veces. Si el envío falla, el registro se borra y la tarea lo reintenta.
 """
+import io
 import logging
 from datetime import timedelta
 from decimal import Decimal
 
+import segno
+from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import IntegrityError, transaction
 from django.template.loader import render_to_string
@@ -89,15 +92,52 @@ def cada_canal(*envios):
         raise errores[0]
 
 
-def _comprobante(usuario, asunto: str, titulo: str, filas: list[tuple[str, str]], total: str, nota: str = ""):
-    contexto = {"nombre": usuario.nombre, "titulo": titulo, "filas": filas, "total": total, "nota": nota}
-    mensaje = EmailMultiAlternatives(
+CID_QR = "qr-reserva@drivly"
+
+
+class _EmailConImagenes(EmailMultiAlternatives):
+    """
+    Email con imágenes dentro del HTML (<img src="cid:...">). Van en un multipart/related junto al HTML:
+    así Gmail y Outlook las muestran en el mensaje y no como un adjunto aparte.
+    """
+
+    imagenes: list[tuple[str, bytes]] = []
+
+    def message(self, **kwargs):
+        msg = super().message(**kwargs)
+        for parte in msg.walk():
+            if parte.get_content_type() == "text/html":
+                for cid, png in self.imagenes:
+                    parte.add_related(png, maintype="image", subtype="png", cid=f"<{cid}>", disposition="inline",
+                                      filename="qr-drivly.png")
+                break
+        return msg
+
+
+def qr_png(token: str) -> bytes:
+    """El mismo QR que muestra la app en el ticket (el playero escanea este texto)."""
+    buffer = io.BytesIO()
+    segno.make(token, error="m").save(buffer, kind="png", scale=8, border=3)
+    return buffer.getvalue()
+
+
+def link_reserva(reserva) -> str:
+    """Página del backend que abre la app en esa reserva (Gmail no deja tocar links drivly://)."""
+    return f"{settings.BACKEND_URL.rstrip('/')}/api/notificaciones/reserva/{reserva.id}/"
+
+
+def _comprobante(usuario, asunto: str, titulo: str, filas: list[tuple[str, str]], total: str, nota: str = "",
+                 qr: bytes | None = None, boton: tuple[str, str] | None = None):
+    contexto = {"nombre": usuario.nombre, "titulo": titulo, "filas": filas, "total": total, "nota": nota,
+                "qr_cid": CID_QR if qr else None, "boton": boton}
+    mensaje = _EmailConImagenes(
         subject=asunto,
         body=render_to_string("notificaciones/comprobante.txt", contexto),
         from_email=None,
         to=[usuario.email],
     )
     mensaje.attach_alternative(render_to_string("notificaciones/comprobante.html", contexto), "text/html")
+    mensaje.imagenes = [(CID_QR, qr)] if qr else []
     mensaje.send()
 
 
@@ -138,8 +178,10 @@ def reserva_confirmada(reserva_id):
         lambda: una_vez(conductor, "reserva_confirmada", reserva.id, Canal.EMAIL, lambda: _comprobante(
             conductor, f"Drivly: comprobante de tu reserva en {reserva.garaje.nombre}", "Reserva confirmada",
             filas, pesos(reserva.monto),
-            "Mostrá el QR de Mis reservas al llegar. Podés cancelar con reembolso total hasta 2 h antes del inicio. "
-            + AVISO_FISCAL,
+            "Al llegar mostrá este QR o el de Mis reservas. Para cancelar (con reembolso total hasta 2 h antes del "
+            "inicio) abrí la reserva en la app. " + AVISO_FISCAL,
+            qr=qr_png(reserva.qr_token) if reserva.qr_token else None,
+            boton=("Ver mi reserva en la app", link_reserva(reserva)),
         )),
         lambda: una_vez(conductor, "reserva_confirmada", reserva.id, Canal.PUSH, lambda: push.enviar(
             conductor, "Reserva confirmada", f"Te esperamos en {reserva.garaje.nombre} {cuando}.",

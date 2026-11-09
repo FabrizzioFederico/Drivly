@@ -512,3 +512,12 @@ def test_sin_cupo_sugiere_solo_garajes_con_tarifa_para_el_vehiculo(cliente, cond
     _moto_barata(solo_motos)
     r = pedir(cliente, conductor_v, garaje, manana(15), manana(15, 30))
     assert r.status_code == 409 and r.data["code"] == "SIN_CUPO" and r.data["cercanos"] == []
+
+
+def test_reserva_ajena_responde_un_mensaje_claro(cliente, conductor_v, garaje):
+    """El link de un comprobante abierto con otra cuenta: la app muestra este texto en el ticket."""
+    from uuid import uuid4
+
+    u, _ = conductor_v
+    r = cliente(u).get(f"/api/reservas/{uuid4()}/")
+    assert r.status_code == 404 and r.data["detail"].startswith("No encontramos esa reserva en tu cuenta")

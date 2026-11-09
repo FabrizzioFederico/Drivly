@@ -85,6 +85,43 @@ def test_comprobante_de_reserva_sale_una_sola_vez(garaje, vehiculo, conductor): 
     assert Aviso.objects.filter(tipo="reserva_confirmada").count() == 2  # email y push (push desactivado igual se registra)
 
 
+def test_comprobante_trae_el_qr_y_el_boton_para_abrir_la_reserva(garaje, vehiculo, settings):  # noqa: F811
+    settings.BACKEND_URL = "https://drivly.test"
+    r = crear_reserva(garaje, vehiculo, en(60), en(180))
+    services.reserva_confirmada(r.id)
+    mensaje = mail.outbox[0].message()
+    # El QR va pegado al HTML (multipart/related), no como adjunto suelto
+    relacionado = next(p for p in mensaje.walk() if p.get_content_type() == "multipart/related")
+    tipos = [p.get_content_type() for p in relacionado.iter_parts()]
+    assert tipos == ["text/html", "image/png"]
+    imagen = list(relacionado.iter_parts())[1]
+    assert imagen["Content-ID"] == f"<{services.CID_QR}>" and imagen.get_content().startswith(b"\x89PNG")
+    assert imagen.get_content() == services.qr_png(r.qr_token)  # el mismo token que muestra el ticket de la app
+    html = _cuerpo_html(mail.outbox[0])
+    link = f"https://drivly.test/api/notificaciones/reserva/{r.id}/"
+    assert f"cid:{services.CID_QR}" in html and link in html and "Ver mi reserva en la app" in html
+    assert link in mail.outbox[0].body  # también en la versión de texto
+
+
+def test_comprobante_de_deuda_no_lleva_qr(garaje, vehiculo, django_capture_on_commit_callbacks):  # noqa: F811
+    r = con_deuda(garaje, vehiculo)
+    with django_capture_on_commit_callbacks(execute=True):
+        saldar_deuda(r.id, MedioCobro.EFECTIVO)
+    assert not any(p.get_content_type() == "image/png" for p in mail.outbox[0].message().walk())
+
+
+def test_pagina_que_abre_la_reserva_en_la_app(cliente):
+    from uuid import uuid4
+
+    reserva_id = uuid4()
+    r = cliente().get(f"/api/notificaciones/reserva/{reserva_id}/")
+    html = r.content.decode()
+    assert r.status_code == 200 and "Abrir en la app" in html
+    assert f"drivly://reserva/{reserva_id}" in html
+    assert f"intent://reserva/{reserva_id}#Intent;scheme=drivly;package=com.drivly.app;end" in html
+    assert cliente().get("/api/notificaciones/reserva/no-es-un-id/").status_code == 404
+
+
 def test_confirmar_el_pago_encola_el_comprobante(garaje, vehiculo, monkeypatch, django_capture_on_commit_callbacks):  # noqa: F811
     from notificaciones import tasks
 

@@ -12,6 +12,21 @@
         <tr><td style="padding:24px;">
           <p style="margin:0 0 4px;font-size:14px;color:#5b6670;">Hola{% if nombre %} {{ nombre }}{% endif %},</p>
           <h1 style="margin:0 0 20px;font-size:22px;">{{ titulo }}</h1>
+          {% if qr_cid %}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+            <tr><td align="center" style="padding:16px;border:1px solid #e6e9eb;border-radius:12px;">
+              <img src="cid:{{ qr_cid }}" width="220" height="220" alt="QR de tu reserva" style="display:block;width:220px;height:220px;">
+              <p style="margin:10px 0 0;font-size:13px;color:#5b6670;">Mostrale este QR al playero al entrar y al salir</p>
+            </td></tr>
+          </table>
+          {% endif %}
+          {% if boton %}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+            <tr><td align="center" style="border-radius:8px;background:#00C2A8;">
+              <a href="{{ boton.1 }}" style="display:block;padding:14px;font-size:16px;font-weight:bold;color:#0f1416;text-decoration:none;">{{ boton.0 }}</a>
+            </td></tr>
+          </table>
+          {% endif %}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
             {% for etiqueta, valor in filas %}
             <tr>

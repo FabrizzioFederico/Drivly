@@ -52,6 +52,15 @@
 
                 <data android:scheme="drivly" android:host="cuenta-activada" />
             </intent-filter>
+            <!-- Botón "Ver mi reserva en la app" del comprobante por email: drivly://reserva/<id> abre el ticket -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="drivly" android:host="reserva" />
+            </intent-filter>
         </activity>
 
         <!-- Notificaciones push de Drivly (Firebase Cloud Messaging) -->
