@@ -49,25 +49,90 @@ function Cabecera() {
   );
 }
 
-/** Tarjeta ilustrativa de la app: así se ve una reserva. */
-function MuestraApp() {
+const DISENOS = [
+  { src: '/mockup-app.webp', ancho: 1100, alto: 1350, titulo: 'App para conductores', detalle: 'Buscá, reservá y entrá con tu QR.',
+    alt: 'La app de Drivly en un celular: el mapa con los garajes cercanos y el precio por hora' },
+  { src: '/mockup-panel.webp', ancho: 1100, alto: 1090, titulo: 'Panel para garajes', detalle: 'Tarifas, ocupación en vivo y cobros.',
+    alt: 'El panel de Drivly para garajes en una notebook: los datos del establecimiento' },
+];
+const INTERVALO_MS = 5000;
+
+/** Slides con los diseños reales: la app y el panel. Pasan solos, se pausan con el mouse y se deslizan con el dedo. */
+function Disenos() {
+  const [actual, setActual] = useState(0);
+  const [pausado, setPausado] = useState(false);
+  const [inicioToque, setInicioToque] = useState(null);
+  // Quien pide menos movimiento en el sistema no ve el pase automático
+  const [sinMovimiento] = useState(() => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
+  const ir = (i) => setActual((i + DISENOS.length) % DISENOS.length);
+
+  useEffect(() => {
+    if (pausado || sinMovimiento) return undefined;
+    const id = setTimeout(() => setActual((a) => (a + 1) % DISENOS.length), INTERVALO_MS);
+    return () => clearTimeout(id);
+  }, [actual, pausado, sinMovimiento]);
+
   return (
-    <Card sx={{ p: 3, maxWidth: 360, width: '100%', mx: 'auto', bgcolor: 'var(--surface-1)' }} aria-hidden>
-      <Typography variant="caption" sx={{ color: 'text.secondary' }}>Garaje cerca · 450 m</Typography>
-      <Typography sx={{ fontSize: 20, fontWeight: 700, mt: 0.5 }}>Cochera Thames</Typography>
-      <Typography variant="body2" sx={{ color: 'text.secondary' }}>Malabia 2200, Palermo</Typography>
-      <Stack direction="row" sx={{ justifyContent: 'space-between', mt: 2 }}>
-        <Typography sx={{ fontWeight: 700 }}>$9.000 / hora</Typography>
-        <Typography sx={{ color: 'var(--accent)', fontWeight: 700 }}>18 libres</Typography>
-      </Stack>
-      <Box sx={{ mt: 3, p: 2.5, borderRadius: 2, bgcolor: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 2 }}>
-        <QrCode2 sx={{ fontSize: 64 }} />
-        <Box>
-          <Typography sx={{ fontWeight: 700 }}>Reserva confirmada</Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>Hoy de 10:00 a 13:00 · AB 123 CD</Typography>
-        </Box>
+    <Box
+      component="section"
+      aria-roledescription="carrusel"
+      aria-label="Así se ve Drivly"
+      onMouseEnter={() => setPausado(true)}
+      onMouseLeave={() => setPausado(false)}
+      onFocus={() => setPausado(true)}
+      onBlur={() => setPausado(false)}
+      onPointerDown={(e) => setInicioToque(e.clientX)}
+      onPointerUp={(e) => {
+        if (inicioToque === null) return;
+        const dx = e.clientX - inicioToque;
+        if (Math.abs(dx) > 40) ir(actual + (dx < 0 ? 1 : -1));
+        setInicioToque(null);
+      }}
+      sx={{ width: '100%', maxWidth: 520, mx: 'auto', touchAction: 'pan-y', userSelect: 'none' }}
+    >
+      <Box sx={{ position: 'relative', aspectRatio: '1 / 1.1' }}>
+        {DISENOS.map((d, i) => (
+          <Box
+            key={d.src}
+            component="img"
+            src={d.src}
+            alt={d.alt}
+            width={d.ancho}
+            height={d.alto}
+            draggable={false}
+            loading={i === 0 ? 'eager' : 'lazy'}
+            aria-hidden={i !== actual}
+            sx={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain',
+              opacity: i === actual ? 1 : 0, transform: i === actual ? 'none' : 'translateY(12px) scale(0.98)',
+              transition: sinMovimiento ? 'none' : 'opacity 600ms ease, transform 600ms ease',
+              filter: 'drop-shadow(0 30px 60px rgba(0,194,168,0.12))',
+            }}
+          />
+        ))}
       </Box>
-    </Card>
+      <Box aria-live="polite" sx={{ textAlign: 'center', mt: 1, minHeight: 52 }}>
+        <Typography sx={{ fontWeight: 700 }}>{DISENOS[actual].titulo}</Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>{DISENOS[actual].detalle}</Typography>
+      </Box>
+      <Stack direction="row" spacing={1} sx={{ justifyContent: 'center', mt: 1.5 }}>
+        {DISENOS.map((d, i) => (
+          <Box
+            key={d.src}
+            component="button"
+            type="button"
+            onClick={() => ir(i)}
+            aria-label={`Ver ${d.titulo.toLowerCase()}`}
+            aria-current={i === actual}
+            sx={{
+              width: i === actual ? 28 : 10, height: 10, p: 0, border: 0, borderRadius: 5, cursor: 'pointer',
+              bgcolor: i === actual ? 'var(--accent)' : 'var(--border-hover)', transition: 'width 300ms ease, background-color 300ms ease',
+              '&:focus-visible': { outline: '2px solid var(--accent)', outlineOffset: 3 },
+            }}
+          />
+        ))}
+      </Stack>
+    </Box>
   );
 }
 
@@ -90,7 +155,7 @@ function Portada() {
             <Button variant="outlined" size="large" href="#garajes">Tengo un garaje</Button>
           </Stack>
         </Box>
-        <MuestraApp />
+        <Disenos />
       </Box>
     </Container>
   );

@@ -38,17 +38,13 @@ const iniciales = (nombre) => (nombre || 'A').split(' ').map((w) => w[0]).join('
 
 export default function AdminPortalView({ user }) {
   const theme = useTheme();
-  const escritorio = useMediaQuery(theme.breakpoints.up('lg'), { noSsr: true });
   const movil = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
-  // Escritorio: menú completo. Tablet: sólo íconos, y la hamburguesa lo expande. Celular: drawer cerrado que tapa el contenido.
-  const [expandido, setExpandido] = useState(escritorio);
+  // Computadora y tablet: barra fija de íconos (el nombre aparece al pasar el mouse). Celular: hamburguesa que abre
+  // el menú completo por encima del contenido.
   const [menuCelular, setMenuCelular] = useState(false);
   const [cuenta, setCuenta] = useState(null);
-  const abierto = movil ? menuCelular : expandido;
-  const anchoMenu = movil ? 0 : expandido ? ANCHO_MENU : ANCHO_ICONOS;
-  const soloIconos = !movil && !expandido;
-
-  useEffect(() => { setExpandido(escritorio); }, [escritorio]);
+  const anchoMenu = movil ? 0 : ANCHO_ICONOS;
+  const soloIconos = !movil;
 
   const [garaje, setGaraje] = useState(null);
   const [sinGaraje, setSinGaraje] = useState(false);
@@ -69,7 +65,7 @@ export default function AdminPortalView({ user }) {
       .catch(() => setSinGaraje(true));
   }, []);
 
-  const alternarMenu = () => (movil ? setMenuCelular((a) => !a) : setExpandido((a) => !a));
+  const alternarMenu = () => setMenuCelular((a) => !a);
   const elegir = (id) => { setSection(id); setMenuCelular(false); };
   const garajeId = garaje?.id;
 
@@ -78,11 +74,18 @@ export default function AdminPortalView({ user }) {
       {/* Por encima del menú: la hamburguesa queda siempre a mano */}
       <AppBar position="fixed" sx={{ zIndex: theme.zIndex.drawer + 1 }}>
         <Toolbar sx={{ gap: 1 }}>
-          <IconButton color="inherit" edge="start" onClick={alternarMenu} aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={abierto}>
-            <MenuIcon />
-          </IconButton>
-          <LogoDrivly tamano={32} />
+          {movil && (
+            <IconButton color="inherit" edge="start" onClick={alternarMenu} aria-label={menuCelular ? 'Cerrar menú' : 'Abrir menú'} aria-expanded={menuCelular}>
+              <MenuIcon />
+            </IconButton>
+          )}
+          {/* En computadora el logo queda centrado sobre la barra de íconos */}
+          <LogoDrivly tamano={32} sx={movil ? undefined : { ml: '-4px', mr: 1.5 }} />
           <Typography sx={{ fontWeight: 700 }}>Drivly</Typography>
+          {/* El nombre del garaje estaba arriba del menú: con la barra de íconos pasa acá */}
+          {!movil && garaje && (
+            <Typography sx={{ color: 'text.secondary', fontWeight: 500, ml: 0.5 }} noWrap>· {garaje.nombre}</Typography>
+          )}
           {USE_MOCKS && <Chip label="DATOS SIMULADOS" size="small" color="warning" sx={{ fontWeight: 700 }} />}
           <Box sx={{ flexGrow: 1 }} />
           <IconButton onClick={(e) => setCuenta(e.currentTarget)} aria-label="Cuenta" sx={{ p: 0.5 }}>
