@@ -72,6 +72,7 @@ import com.drivly.app.data.ubicacionActual
 import com.drivly.app.ui.ars
 import com.drivly.app.ui.components.ListaCercanos
 import com.drivly.app.ui.components.LocalEspacioBarra
+import com.drivly.app.ui.components.FotoGaraje
 import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.ui.components.bordeOscuro
 import com.drivly.app.ui.iso
@@ -336,6 +337,7 @@ private fun TarjetaGaraje(g: GarajeDisponible, elegido: Boolean, precioExacto: B
         onClick = onClick,
         borde = if (elegido) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
+        FotoGaraje(g.foto, g.nombre)
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(g.nombre, style = MaterialTheme.typography.titleMedium)

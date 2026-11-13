@@ -300,3 +300,37 @@ def test_google_sobre_cuenta_con_contrasenia_la_anula(db):
     Usuario.objects.create_user(email="nuevo@gmail.com", password="clave-del-intruso-1", rol=Rol.CONDUCTOR)
     u = services.usuario_desde_google(INFO)
     assert u.google_sub == "google-123" and not u.has_usable_password()
+
+
+class _RespuestaFoto:
+    def __init__(self, contenido):
+        self.content = contenido
+
+    def raise_for_status(self):
+        pass
+
+
+def _png():
+    salida = BytesIO()
+    Image.new("RGB", (96, 96), "teal").save(salida, format="PNG")
+    return salida.getvalue()
+
+
+def test_google_copia_la_foto_de_la_cuenta_si_no_tiene(db, monkeypatch, tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    pedidas = []
+    monkeypatch.setattr(services.requests, "get", lambda url, timeout: pedidas.append(url) or _RespuestaFoto(_png()))
+    u = services.usuario_desde_google(INFO)
+    services.copiar_foto_de_google(u, {**INFO, "picture": "https://lh3.googleusercontent.com/a/abc=s96-c"})
+    u.refresh_from_db()
+    assert u.foto and pedidas == ["https://lh3.googleusercontent.com/a/abc=s512-c"]
+
+    # Con foto propia no se vuelve a pedir, y si Google falla el login sigue igual
+    services.copiar_foto_de_google(u, {**INFO, "picture": "https://lh3.googleusercontent.com/a/otra"})
+    assert len(pedidas) == 1
+    otro = services.usuario_desde_google({**INFO, "sub": "g-2", "email": "otro@gmail.com"})
+    monkeypatch.setattr(services.requests, "get", lambda url, timeout: (_ for _ in ()).throw(OSError("sin red")))
+    services.copiar_foto_de_google(otro, {"picture": "https://lh3.googleusercontent.com/a/x"})
+    services.copiar_foto_de_google(otro, {"picture": "https://malicioso.example.com/foto.jpg"})
+    otro.refresh_from_db()
+    assert not otro.foto

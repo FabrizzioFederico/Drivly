@@ -19,7 +19,7 @@ from .serializers import (
     ReenvioActivacionSerializer,
     UsuarioSerializer,
 )
-from .services import usuario_desde_google, verificar_token_google
+from .services import copiar_foto_de_google, usuario_desde_google, verificar_token_google
 
 
 def tokens_para(usuario):
@@ -132,6 +132,7 @@ class GoogleLoginView(APIView):
         datos.is_valid(raise_exception=True)
         info = verificar_token_google(datos.validated_data["id_token"])
         usuario = usuario_desde_google(info, datos.validated_data.get("rol"))
+        copiar_foto_de_google(usuario, info)  # fuera de la transacción: no la deja abierta mientras baja la imagen
         return Response(
             {**tokens_para(usuario), "user": UsuarioSerializer(usuario).data},
             status=status.HTTP_200_OK,

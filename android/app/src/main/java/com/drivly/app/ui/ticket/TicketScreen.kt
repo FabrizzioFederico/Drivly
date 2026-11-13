@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.drivly.app.DrivlyApplication
+import com.drivly.app.ui.components.FotoGaraje
 import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.data.api.Qr
 import com.drivly.app.data.api.Reserva
@@ -151,6 +152,7 @@ fun TicketScreen(reservaId: String, alVolver: (mensaje: String?) -> Unit) {
 
             if (r != null) {
                 Tarjeta(Modifier.fillMaxWidth()) {
+                    r.garaje?.let { FotoGaraje(it.foto, it.nombre, alto = 140.dp) }
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(r.patente, style = MaterialTheme.typography.headlineSmall.copy(fontFamily = JetBrainsMono))
                         Text(periodo(r.modalidad, r.inicio, r.fin), style = MaterialTheme.typography.titleMedium)

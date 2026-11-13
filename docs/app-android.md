@@ -27,7 +27,7 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
-| POST | `auth/google/` | `{ "id_token": "<Credential Manager>" }` | `{ access, refresh, user }` — crea la cuenta como CONDUCTOR |
+| POST | `auth/google/` | `{ "id_token": "<Credential Manager>" }` | `{ access, refresh, user }` — crea la cuenta como CONDUCTOR. Si la cuenta no tiene foto, copia la de Google (512 px) |
 | POST | `auth/registro/` | `{ nombre, email, password }` | 201 `{ detail, email, email_enviado }`: la cuenta (siempre CONDUCTOR) queda sin activar y llega un email con el link |
 | POST | `auth/activar/reenviar/` | `{ email }` | 202 siempre (no revela si la cuenta existe); manda otro link si está pendiente |
 | GET | `auth/activar/{uid}/{token}/` | — | El link del email: página HTML de "cuenta activada" con el botón `drivly://cuenta-activada`. Vence a los 3 días |
@@ -53,7 +53,7 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | GET/POST | `vehiculos/` | Listar / registrar patente (la categoría sale de DataCar, no se elige). Incluye `marca`, `modelo`, `anio` y `tipo` de DataCar |
 | POST | `vehiculos/{id}/declarar/` | `{ "categoria": "CAMIONETA" }` si DataCar no la resolvió. "Auto" sólo sale de DataCar: así nadie paga como auto con una camioneta |
 | POST | `vehiculos/{id}/revalidar/` | Vuelve a consultar DataCar |
-| GET | `garajes/disponibles/?lat&lng&radio&inicio&fin&modalidad` | Búsqueda (sólo garajes que pueden cobrar) |
+| GET | `garajes/disponibles/?lat&lng&radio&inicio&fin&modalidad` | Búsqueda (sólo garajes que pueden cobrar). `foto` es la ruta de la foto del frente (`/api/media/...`) o `null`; también viene en `garaje_detalle` de la reserva |
 | GET | `garajes/{id}/cercanos/?inicio&fin&modalidad` | Alternativas si el garaje está lleno |
 | GET | `reservas/cotizar/?garaje&vehiculo&modalidad&inicio&fin` | Precio estimado sin retener el lugar (`total`, `fracciones`, `precio_fraccion`, `precio_primera_hora`; `tope_aplicado` = `12h`/`24h` si se cobró la estadía, con `sin_tope`) |
 | POST | `reservas/hold/` | `{ garaje, vehiculo, modalidad, inicio, fin? }` → retiene el lugar 5 min |

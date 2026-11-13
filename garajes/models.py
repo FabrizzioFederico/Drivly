@@ -32,6 +32,11 @@ class Modalidad(models.TextChoices):
     ANUAL = "ANUAL", "Abono anual"
 
 
+def ruta_foto_garaje(garaje, _nombre_original):
+    """Nombre nuevo en cada subida: así la app y el navegador nunca muestran la foto vieja desde su caché."""
+    return f"garajes/{garaje.id}/{uuid.uuid4().hex}.jpg"
+
+
 class Garaje(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     admin = models.ForeignKey(
@@ -62,6 +67,8 @@ class Garaje(models.Model):
         max_digits=4, decimal_places=2, default=Decimal("0.50"),
         help_text="0.50 = 50 % de recargo sobre la fracción de overstay.",
     )
+    # Foto del frente o de la entrada: el conductor la ve al elegir dónde estacionar (1280x720 JPEG)
+    foto = models.ImageField(upload_to=ruta_foto_garaje, blank=True, default="")
     activo = models.BooleanField(default=True)
     creado_en = models.DateTimeField(auto_now_add=True)
 

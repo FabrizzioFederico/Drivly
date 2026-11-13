@@ -53,6 +53,19 @@ export const garajesService = {
     return (await client.get(`/garajes/${id}/ocupacion/`)).data;
   },
 
+  /** PUT /garajes/{id}/foto/ (multipart): foto del frente, la ve el conductor en la app. Devuelve el garaje. */
+  async subirFoto(id, archivo) {
+    const datos = new FormData();
+    datos.append('foto', archivo);
+    // multipart: el navegador completa el boundary (si quedara JSON, axios convertiría el FormData)
+    return (await client.put(`/garajes/${id}/foto/`, datos, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })).data;
+  },
+
+  /** DELETE /garajes/{id}/foto/ */
+  async quitarFoto(id) {
+    return (await client.delete(`/garajes/${id}/foto/`)).data;
+  },
+
   /** GET /garajes/{id}/informe/?desde&hasta (AAAA-MM-DD): ingresos por medio, comisión y cierres de caja */
   async informe(id, params) {
     return (await client.get(`/garajes/${id}/informe/`, { params })).data;

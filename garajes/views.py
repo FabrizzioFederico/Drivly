@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -11,10 +12,12 @@ from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from cuentas.models import Rol, Usuario
+from cuentas.perfil import imagen_a_jpeg
 from cuentas.permissions import EsAdminGaraje
 from reportes.informe import informe as informe_de_caja
 from reportes.informe import pdf as pdf_de_informe
@@ -180,6 +183,26 @@ class GarajeViewSet(viewsets.ModelViewSet):
         respuesta = HttpResponse(contenido, content_type="application/pdf")
         respuesta["Content-Disposition"] = f'attachment; filename="{nombre}"'
         return respuesta
+
+    @action(detail=True, methods=["put", "delete"], parser_classes=[MultiPartParser])
+    def foto(self, request, pk=None):
+        """PUT /api/garajes/{id}/foto/ (multipart, campo `foto`) la reemplaza; DELETE la quita. Sólo su admin."""
+        garaje = self.get_object()
+        anterior = garaje.foto.name
+        if request.method == "DELETE":
+            garaje.foto = ""
+            garaje.save(update_fields=["foto"])
+        else:
+            archivo = request.FILES.get("foto")
+            if archivo is None:
+                raise ValidationError({"foto": "Elegí una imagen."})
+            # 16:9 como la tarjeta de la app; hasta 8 MB porque suele ser una foto de cámara sin achicar
+            contenido = imagen_a_jpeg(archivo, (1280, 720), max_mb=8)
+            garaje.foto.save("foto.jpg", ContentFile(contenido), save=False)
+            garaje.save(update_fields=["foto"])
+        if anterior and anterior != garaje.foto.name:
+            garaje.foto.storage.delete(anterior)
+        return Response(GarajeSerializer(garaje).data)
 
     @action(detail=True, methods=["get", "put"])
     def tarifas(self, request, pk=None):

@@ -1,10 +1,19 @@
+import logging
+import re
+from urllib.parse import urlparse
+
+import requests
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.db import transaction
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 
 from .models import Rol, Usuario
+from .perfil import guardar_foto
+
+log = logging.getLogger(__name__)
 
 ROLES_AUTOREGISTRO = {Rol.CONDUCTOR, Rol.ADMIN_GARAJE}  # el playero lo da de alta su admin
 
@@ -54,3 +63,22 @@ def usuario_desde_google(info: dict, rol_solicitado: str = Rol.CONDUCTOR) -> Usu
     if not usuario.is_active:
         raise AuthenticationFailed("La cuenta está desactivada.")
     return usuario
+
+
+def copiar_foto_de_google(usuario: Usuario, info: dict) -> None:
+    """
+    Si la cuenta no tiene foto, usa la de la cuenta de Google (el claim `picture` del ID token).
+    Nunca pisa una foto que la persona eligió, y si Google no responde la cuenta queda sin foto: el login sigue igual.
+    """
+    url = info.get("picture") or ""
+    if usuario.foto or not url:
+        return
+    if not (urlparse(url).hostname or "").endswith(".googleusercontent.com"):
+        return  # sólo se descargan imágenes de Google
+    url = re.sub(r"=s\d+(-c)?$", "=s512-c", url)  # Google la manda de 96 px: se pide de 512
+    try:
+        respuesta = requests.get(url, timeout=5)
+        respuesta.raise_for_status()
+        guardar_foto(usuario, ContentFile(respuesta.content, name="google.jpg"))
+    except Exception as error:  # red caída, imagen rota, archivo enorme
+        log.warning("No se pudo copiar la foto de Google de %s: %s", usuario.email, error)

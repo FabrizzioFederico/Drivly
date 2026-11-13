@@ -60,6 +60,7 @@ def garajes_con_disponibilidad(lat, lng, ini, fin, modalidad=Modalidad.HORA, rad
             continue
         resultado.append({
             "id": g.id, "nombre": g.nombre, "direccion": g.direccion, "lat": g.lat, "lng": g.lng,
+            "foto": g.foto.url if g.foto else None,
             "distancia_m": round(distancia), "lugares_libres": libres,
             "precio_desde": precios[g.id], "precio_unidad": UNIDAD[modalidad],
         })

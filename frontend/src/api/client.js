@@ -3,6 +3,12 @@ import axios from 'axios';
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 export const USE_MOCKS = String(import.meta.env.VITE_USE_MOCKS) === 'true';
 
+/** Las fotos vienen como ruta (/api/media/...): se sirven desde el mismo servidor que la API. */
+export const urlDeMedia = (ruta) => {
+  if (!ruta || /^https?:\/\//.test(ruta)) return ruta || null;
+  return (/^https?:\/\//.test(API_URL) ? new URL(API_URL).origin : '') + ruta;
+};
+
 const ACCESS_KEY = 'drivly.access';
 const REFRESH_KEY = 'drivly.refresh';
 

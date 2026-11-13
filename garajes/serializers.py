@@ -36,19 +36,27 @@ class TarifaSerializer(serializers.ModelSerializer):
         return attrs
 
 
+def url_foto(garaje):
+    return garaje.foto.url if garaje.foto else None
+
+
 class GarajeSerializer(serializers.ModelSerializer):
     """Vista completa, para el admin del garaje y su playero."""
 
     tarifas = TarifaSerializer(many=True, read_only=True)
+    foto = serializers.SerializerMethodField()  # se cambia con PUT/DELETE /garajes/{id}/foto/
 
     class Meta:
         model = Garaje
         fields = [
             "id", "nombre", "cuit", "direccion", "lat", "lng",
             "capacidad", "cupo_abonos", "tolerancia_min", "salida_estimada_default_min",
-            "recargo_overstay", "activo", "tarifas", "creado_en",
+            "recargo_overstay", "foto", "activo", "tarifas", "creado_en",
         ]
         read_only_fields = ["id", "activo", "tarifas", "creado_en"]
+
+    def get_foto(self, garaje):
+        return url_foto(garaje)
 
     def validate(self, attrs):
         _validar_con_modelo(self.instance or Garaje(), {**attrs})
@@ -67,10 +75,14 @@ class GarajePublicoSerializer(serializers.ModelSerializer):
 
     tarifas = TarifaPublicaSerializer(many=True, read_only=True)
     distancia_m = serializers.SerializerMethodField()
+    foto = serializers.SerializerMethodField()
 
     class Meta:
         model = Garaje
-        fields = ["id", "nombre", "direccion", "lat", "lng", "tolerancia_min", "tarifas", "distancia_m"]
+        fields = ["id", "nombre", "direccion", "lat", "lng", "foto", "tolerancia_min", "tarifas", "distancia_m"]
+
+    def get_foto(self, garaje):
+        return url_foto(garaje)
 
     def get_distancia_m(self, garaje):
         valor = getattr(garaje, "distancia_m", None)

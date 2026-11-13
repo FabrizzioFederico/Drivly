@@ -164,7 +164,7 @@ function Portada() {
 function Titulo({ id, sobre, titulo, detalle }) {
   return (
     <Box id={id} sx={{ scrollMarginTop: 88, mb: 5, maxWidth: 680 }}>
-      <Typography sx={{ color: 'var(--accent)', fontWeight: 600, fontSize: 14, mb: 1 }}>{sobre}</Typography>
+      {sobre && <Typography sx={{ color: 'var(--accent)', fontWeight: 600, fontSize: 14, mb: 1 }}>{sobre}</Typography>}
       <Typography component="h2" sx={{ fontSize: { xs: 28, md: 36 }, fontWeight: 800, letterSpacing: '-0.01em' }}>{titulo}</Typography>
       {detalle && <Typography sx={{ color: 'text.secondary', mt: 1.5, fontSize: 17, lineHeight: 1.6 }}>{detalle}</Typography>}
     </Box>
@@ -303,7 +303,7 @@ function Contacto() {
 
   return (
     <Container maxWidth="md" sx={{ py: { xs: 7, md: 10 } }}>
-      <Titulo id="contacto" sobre="Sumá tu garaje" titulo="Hablemos"
+      <Titulo id="contacto" titulo="Sumá tu garaje"
         detalle="Dejanos tus datos y te escribimos para darte de alta. Configurás tarifas, capacidad y playeros desde el panel." />
       <Card component="form" onSubmit={enviar} sx={{ p: { xs: 3, md: 4 } }}>
         <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>

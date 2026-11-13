@@ -1,3 +1,4 @@
+import pathlib
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -256,3 +257,37 @@ def test_tarifa_invalida_no_borra_las_existentes(admin_garaje, garaje, cliente):
 
 def test_tarifas_de_otro_admin_dan_404(otro_admin, garaje, cliente):
     assert cliente(otro_admin).get(f"/api/garajes/{garaje.id}/tarifas/").status_code == 404
+
+
+def test_foto_del_garaje(garaje, admin_garaje, otro_admin, conductor, cliente, settings, tmp_path):
+    from io import BytesIO
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    settings.MEDIA_ROOT = tmp_path
+    salida = BytesIO()
+    Image.new("RGB", (2000, 1500), "teal").save(salida, format="JPEG")
+    url = f"/api/garajes/{garaje.id}/foto/"
+    subir = lambda c: c.put(url, {"foto": SimpleUploadedFile("frente.jpg", salida.getvalue())}, format="multipart")
+
+    assert subir(cliente(otro_admin)).status_code == 404  # sólo el admin del garaje
+    r = subir(cliente(admin_garaje))
+    assert r.status_code == 200 and r.json()["foto"].startswith("/api/media/garajes/")
+    garaje.refresh_from_db()
+    with Image.open(garaje.foto.path) as imagen:
+        assert imagen.size == (1280, 720)
+    primera = garaje.foto.path
+
+    # El conductor la ve en el detalle del garaje
+    assert cliente(conductor).get(f"/api/garajes/{garaje.id}/").json()["foto"] == r.json()["foto"]
+
+    # Al reemplazarla o quitarla se borra el archivo anterior
+    subir(cliente(admin_garaje))
+    garaje.refresh_from_db()
+    assert not pathlib.Path(primera).exists()
+    assert cliente(admin_garaje).delete(url).json()["foto"] is None
+    assert not pathlib.Path(garaje.foto.path).exists()
+
+    malo = cliente(admin_garaje).put(url, {"foto": SimpleUploadedFile("x.jpg", b"no es imagen")}, format="multipart")
+    assert malo.status_code == 400

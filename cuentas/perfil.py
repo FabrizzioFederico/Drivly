@@ -23,13 +23,13 @@ MAX_INTENTOS = 5
 
 # ---------- Foto ----------
 
-def guardar_foto(usuario, archivo):
+def imagen_a_jpeg(archivo, tamano, max_mb=MAX_FOTO_MB):
     """
-    Recorta al centro en cuadrado, corrige la rotación de la cámara (EXIF), achica a 512 px y guarda JPEG.
-    Una foto de varios MB del teléfono queda en unas decenas de KB. Borra la foto anterior.
+    Recorta al centro con la proporción de `tamano` (ancho, alto), corrige la rotación de la cámara (EXIF), achica y
+    devuelve los bytes de un JPEG. Una foto de varios MB del teléfono queda en decenas de KB.
     """
-    if archivo.size > MAX_FOTO_MB * 1024 * 1024:
-        raise ValidationError({"foto": f"La foto no puede pesar más de {MAX_FOTO_MB} MB."})
+    if archivo.size > max_mb * 1024 * 1024:
+        raise ValidationError({"foto": f"La foto no puede pesar más de {max_mb} MB."})
     try:
         imagen = Image.open(archivo)
         imagen.verify()  # detecta archivos truncados o que no son imágenes
@@ -38,12 +38,17 @@ def guardar_foto(usuario, archivo):
     except (UnidentifiedImageError, OSError, SyntaxError):
         raise ValidationError({"foto": "El archivo no es una imagen válida (JPG, PNG o WebP)."})
 
-    imagen = ImageOps.fit(imagen.convert("RGB"), (LADO_FOTO, LADO_FOTO), Image.Resampling.LANCZOS)
+    imagen = ImageOps.fit(imagen.convert("RGB"), tamano, Image.Resampling.LANCZOS)
     salida = BytesIO()
     imagen.save(salida, format="JPEG", quality=85, optimize=True)
+    return salida.getvalue()
 
+
+def guardar_foto(usuario, archivo):
+    """Foto de perfil cuadrada de 512 px. Borra la anterior."""
+    contenido = imagen_a_jpeg(archivo, (LADO_FOTO, LADO_FOTO))
     anterior = usuario.foto.name
-    usuario.foto.save("foto.jpg", ContentFile(salida.getvalue()), save=True)  # el nombre real lo pone ruta_foto
+    usuario.foto.save("foto.jpg", ContentFile(contenido), save=True)  # el nombre real lo pone ruta_foto
     if anterior:
         usuario.foto.storage.delete(anterior)
     return usuario

@@ -142,10 +142,13 @@ data class GarajeDisponible(
     @SerialName("lugares_libres") val lugaresLibres: Int,
     @SerialName("precio_desde") val precioDesde: String,
     @SerialName("precio_unidad") val precioUnidad: String,
+    val foto: String? = null, // ruta relativa (/api/media/...) que carga el admin desde la web
 )
 
 @Serializable
-data class GarajeResumen(val id: String, val nombre: String, val direccion: String, val lat: String, val lng: String)
+data class GarajeResumen(
+    val id: String, val nombre: String, val direccion: String, val lat: String, val lng: String, val foto: String? = null,
+)
 
 @Serializable
 data class PedidoHold(

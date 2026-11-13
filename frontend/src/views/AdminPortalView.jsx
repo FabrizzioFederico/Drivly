@@ -9,11 +9,12 @@ import BarChartOutlined from '@mui/icons-material/BarChartOutlined';
 import PointOfSaleOutlined from '@mui/icons-material/PointOfSaleOutlined';
 import GroupsOutlined from '@mui/icons-material/GroupsOutlined';
 import LocalParkingOutlined from '@mui/icons-material/LocalParkingOutlined';
+import LogoutOutlined from '@mui/icons-material/LogoutOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
 import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined';
 import TuneOutlined from '@mui/icons-material/TuneOutlined';
 import { authService } from '../api/authService';
-import { USE_MOCKS } from '../api/client';
+import { urlDeMedia, USE_MOCKS } from '../api/client';
 import { garajesService } from '../api/garajesService';
 import CajaPanel from './admin/CajaPanel';
 import CobrosPanel from './admin/CobrosPanel';
@@ -92,15 +93,22 @@ export default function AdminPortalView({ user }) {
           {USE_MOCKS && <Chip label="DATOS SIMULADOS" size="small" color="warning" sx={{ fontWeight: 700 }} />}
           <Box sx={{ flexGrow: 1 }} />
           <IconButton onClick={(e) => setCuenta(e.currentTarget)} aria-label="Cuenta" sx={{ p: 0.5 }}>
-            <Avatar sx={{ width: 36, height: 36, fontSize: 14, fontWeight: 600, bgcolor: 'var(--surface-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>{iniciales(user?.nombre)}</Avatar>
+            <Avatar src={urlDeMedia(user?.foto) || undefined} alt="" sx={{ width: 36, height: 36, fontSize: 14, fontWeight: 600, bgcolor: 'var(--surface-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>{iniciales(user?.nombre)}</Avatar>
           </IconButton>
+          <Tooltip title="Cerrar sesión">
+            <IconButton color="inherit" onClick={() => authService.logout()} aria-label="Cerrar sesión">
+              <LogoutOutlined />
+            </IconButton>
+          </Tooltip>
           <Menu anchorEl={cuenta} open={Boolean(cuenta)} onClose={() => setCuenta(null)}>
             <Box sx={{ px: 2, py: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 700 }}>{user?.nombre ?? 'Administrador'}</Typography>
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>{user?.email ?? 'Propietario'}</Typography>
             </Box>
             <Divider />
-            <MenuItem onClick={() => authService.logout()}>Salir</MenuItem>
+            <MenuItem onClick={() => authService.logout()}>
+              <ListItemIcon><LogoutOutlined fontSize="small" /></ListItemIcon>Cerrar sesión
+            </MenuItem>
           </Menu>
         </Toolbar>
       </AppBar>

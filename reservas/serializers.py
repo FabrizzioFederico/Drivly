@@ -15,6 +15,7 @@ class GarajeDisponibleSerializer(serializers.Serializer):
     lugares_libres = serializers.IntegerField()
     precio_desde = serializers.DecimalField(max_digits=12, decimal_places=2)
     precio_unidad = serializers.CharField()
+    foto = serializers.CharField(allow_null=True)  # ruta relativa (/api/media/...) o null
 
 
 class GarajeResumenSerializer(serializers.Serializer):
@@ -23,6 +24,10 @@ class GarajeResumenSerializer(serializers.Serializer):
     direccion = serializers.CharField()
     lat = serializers.DecimalField(max_digits=9, decimal_places=6)
     lng = serializers.DecimalField(max_digits=9, decimal_places=6)
+    foto = serializers.SerializerMethodField()
+
+    def get_foto(self, garaje):
+        return garaje.foto.url if garaje.foto else None
 
 
 class ReservaSerializer(serializers.ModelSerializer):
