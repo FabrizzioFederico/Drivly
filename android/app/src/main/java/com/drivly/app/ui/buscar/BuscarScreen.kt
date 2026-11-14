@@ -70,9 +70,10 @@ import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.data.tienePermisoDeUbicacion
 import com.drivly.app.data.ubicacionActual
 import com.drivly.app.ui.ars
+import com.drivly.app.ui.components.Calificacion
+import com.drivly.app.ui.components.FotoGaraje
 import com.drivly.app.ui.components.ListaCercanos
 import com.drivly.app.ui.components.LocalEspacioBarra
-import com.drivly.app.ui.components.FotoGaraje
 import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.ui.components.bordeOscuro
 import com.drivly.app.ui.iso
@@ -345,6 +346,7 @@ private fun TarjetaGaraje(g: GarajeDisponible, elegido: Boolean, precioExacto: B
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(g.direccion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Calificacion(g.estrellas, g.cantidadResenas)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 // Con vehículo el precio es el de su categoría; sin él, el más barato del garaje
                 Text("${if (precioExacto) "" else "Desde "}${ars(g.precioDesde)} ${g.precioUnidad}",

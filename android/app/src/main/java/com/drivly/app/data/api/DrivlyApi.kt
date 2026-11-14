@@ -129,6 +129,13 @@ interface DrivlyApi {
     @GET("garajes/")
     suspend fun misGarajes(): Pagina<GarajeOperado>
 
+    @GET("garajes/{id}/resenas/")
+    suspend fun resenas(@Path("id") garajeId: String): PaginaResenas
+
+    /** Crea o corrige la calificación de una estadía terminada. */
+    @PUT("reservas/{id}/resena/")
+    suspend fun calificar(@Path("id") reservaId: String, @Body pedido: PedidoResena): Resena
+
     @GET("garajes/{id}/ocupacion/")
     suspend fun ocupacion(@Path("id") garajeId: String): Ocupacion
 

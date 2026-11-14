@@ -27,7 +27,7 @@ class ReservaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
 
     def get_queryset(self):
         u = self.request.user
-        qs = Reserva.objects.select_related("garaje", "vehiculo")
+        qs = Reserva.objects.select_related("garaje", "vehiculo", "resena")
         if u.rol == Rol.ADMIN_GARAJE:
             qs = qs.filter(garaje__admin=u)
         elif u.rol == Rol.PLAYERO:
@@ -124,6 +124,27 @@ class ReservaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
         if canal not in CANALES:
             raise ValidationError({"canal": f"Debe ser uno de: {', '.join(CANALES)}."})
         return Response({"init_point": crear_preferencia(reserva, canal)})
+
+    @action(detail=True, methods=["get", "put"])
+    def resena(self, request, pk=None):
+        """
+        GET /api/reservas/{id}/resena/ -> la reseña que dejó el conductor (404 si no calificó).
+        PUT {estrellas: 1-5, comentario?} -> la crea o la corrige; sólo con la estadía terminada y hasta 30 días.
+        """
+        from garajes.models import Resena
+        from garajes.resenas import calificar
+        from garajes.serializers import PedidoResenaSerializer, ResenaSerializer
+
+        reserva = self._mia()
+        if request.method == "GET":
+            resena = Resena.objects.filter(reserva=reserva).first()
+            if resena is None:
+                raise NotFound("Todavía no calificaste esta estadía.")
+            return Response(ResenaSerializer(resena).data)
+        datos = PedidoResenaSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        resena = calificar(reserva, datos.validated_data["estrellas"], datos.validated_data["comentario"])
+        return Response(ResenaSerializer(resena).data)
 
     @action(detail=True, methods=["get"])
     def qr(self, request, pk=None):

@@ -45,6 +45,7 @@ Todos con barra final (convención de los routers de DRF).
 | garajes | `GET /garajes/`, `GET/PATCH /garajes/{id}/` | `capacidad`, `cupo_abonos`, `salida_estimada_default_min`, `tolerancia_min`, `recargo_overstay` (CU-06) |
 | garajes | `GET/PUT /garajes/{id}/tarifas/` | Filas `{ categoria, modalidad, precio_primera_hora, precio_fraccion, fraccion_min, minimo_fracciones, tope_12h, tope_24h, precio_periodo }` |
 | garajes | `PUT/DELETE /garajes/{id}/foto/` | Foto del estacionamiento (multipart `foto`, hasta 8 MB, se guarda 1280×720); la ve el conductor en la app |
+| garajes | `GET /garajes/{id}/resenas/?page`, `POST /garajes/{id}/resenas/{resena_id}/responder/` | Opiniones: promedio, cantidad por estrellas y comentarios; el admin responde (vacía la borra) |
 | garajes | `GET /garajes/{id}/informe/?desde&hasta`, `GET /garajes/{id}/informe/pdf/` | Caja e informe: ingresos por medio, comisión y cierres de caja; el PDF se baja como archivo |
 | garajes | `GET /garajes/{id}/ocupacion/`, `GET /garajes/{id}/metricas/` | Monitor, alertas de overstay y KPIs (CU-10) |
 | garajes | `GET/POST /garajes/{id}/playeros/`, `DELETE /garajes/{id}/playeros/{usuario}/` | Equipo (RFW-06) |

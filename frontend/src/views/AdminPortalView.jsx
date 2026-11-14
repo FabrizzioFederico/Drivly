@@ -12,6 +12,7 @@ import LocalParkingOutlined from '@mui/icons-material/LocalParkingOutlined';
 import LogoutOutlined from '@mui/icons-material/LogoutOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
 import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined';
+import StarOutlineRounded from '@mui/icons-material/StarOutlineRounded';
 import TuneOutlined from '@mui/icons-material/TuneOutlined';
 import { authService } from '../api/authService';
 import { urlDeMedia, USE_MOCKS } from '../api/client';
@@ -22,6 +23,7 @@ import DeudasPanel from './admin/DeudasPanel';
 import EquipoPanel from './admin/EquipoPanel';
 import GarajePanel from './admin/GarajePanel';
 import MonitorPanel from './admin/MonitorPanel';
+import OpinionesPanel from './admin/OpinionesPanel';
 import TarifasPanel from './admin/TarifasPanel';
 import LogoDrivly from '../components/LogoDrivly';
 
@@ -36,6 +38,7 @@ const NAV = [
   { id: 'deudas', label: 'Deudas', Icono: ReceiptLongOutlined },
   { id: 'reportes', label: 'Monitor', Icono: BarChartOutlined },
   { id: 'caja', label: 'Caja e informe', Icono: PointOfSaleOutlined },
+  { id: 'opiniones', label: 'Opiniones', Icono: StarOutlineRounded },
 ];
 
 const iniciales = (nombre) => (nombre || 'A').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
@@ -178,6 +181,7 @@ export default function AdminPortalView({ user }) {
               {section === 'cobros' && <CobrosPanel garajeId={garajeId} retorno={retornoMP} />}
               {section === 'deudas' && <DeudasPanel garajeId={garajeId} />}
               {section === 'caja' && <CajaPanel garajeId={garajeId} />}
+              {section === 'opiniones' && <OpinionesPanel garajeId={garajeId} />}
             </>
           )}
         </Box>

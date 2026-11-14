@@ -2,7 +2,7 @@
 from decimal import Decimal
 
 from django.conf import settings
-from django.db.models import Min
+from django.db.models import Avg, Count, Min
 
 from garajes.geo import caja_alrededor, distancia_m
 from garajes.models import Garaje, Tarifa
@@ -49,6 +49,7 @@ def garajes_con_disponibilidad(lat, lng, ini, fin, modalidad=Modalidad.HORA, rad
     ))
     if excluir_id:
         candidatos = candidatos.exclude(id=excluir_id)
+    candidatos = candidatos.annotate(estrellas_promedio=Avg("resenas__estrellas"), cantidad_resenas=Count("resenas"))
 
     resultado = []
     for g in candidatos:
@@ -61,6 +62,8 @@ def garajes_con_disponibilidad(lat, lng, ini, fin, modalidad=Modalidad.HORA, rad
         resultado.append({
             "id": g.id, "nombre": g.nombre, "direccion": g.direccion, "lat": g.lat, "lng": g.lng,
             "foto": g.foto.url if g.foto else None,
+            "estrellas": round(float(g.estrellas_promedio), 1) if g.estrellas_promedio is not None else None,
+            "cantidad_resenas": g.cantidad_resenas,
             "distancia_m": round(distancia), "lugares_libres": libres,
             "precio_desde": precios[g.id], "precio_unidad": UNIDAD[modalidad],
         })

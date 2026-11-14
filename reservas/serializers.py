@@ -16,6 +16,8 @@ class GarajeDisponibleSerializer(serializers.Serializer):
     precio_desde = serializers.DecimalField(max_digits=12, decimal_places=2)
     precio_unidad = serializers.CharField()
     foto = serializers.CharField(allow_null=True)  # ruta relativa (/api/media/...) o null
+    estrellas = serializers.FloatField(allow_null=True)  # promedio de las reseñas, null si no tiene
+    cantidad_resenas = serializers.IntegerField()
 
 
 class GarajeResumenSerializer(serializers.Serializer):
@@ -40,14 +42,26 @@ class ReservaSerializer(serializers.ModelSerializer):
     total = serializers.DecimalField(source="monto", max_digits=12, decimal_places=2, read_only=True)
     garaje_detalle = GarajeResumenSerializer(source="garaje", read_only=True)
     cancelable_hasta = serializers.SerializerMethodField()
+    calificable = serializers.SerializerMethodField()
+    mis_estrellas = serializers.SerializerMethodField()
 
     class Meta:
         model = Reserva
         fields = [
             "id", "garaje", "garaje_detalle", "vehiculo", "patente", "categoria", "origen", "modalidad",
             "inicio", "fin", "estado", "hold_expira_en", "total", "creada_en", "cancelable_hasta", "medio_cobro",
+            "calificable", "mis_estrellas",
         ]
         read_only_fields = fields
+
+    def get_calificable(self, reserva):
+        from garajes.resenas import se_puede_calificar  # evita import circular
+
+        return se_puede_calificar(reserva)
+
+    def get_mis_estrellas(self, reserva):
+        resena = getattr(reserva, "resena", None)
+        return resena.estrellas if resena else None
 
     def get_cancelable_hasta(self, reserva):
         from .services import cancelable_hasta  # evita import circular

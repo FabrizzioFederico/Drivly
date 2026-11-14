@@ -62,6 +62,8 @@ Para "Ingresar con Google" hay que crear además un **client ID de tipo Android*
 | GET | `reservas/{id}/qr/` | `{ qr_token, valido_desde, valido_hasta, reutilizable }` |
 | POST | `reservas/{id}/cancelar/` | Cancela; `reembolso`: `REEMBOLSADO`, `REEMBOLSO_FALLIDO` (se reintenta solo) o `null` |
 | GET | `reservas/` | Mis reservas (paginado: `results`) |
+| GET | `garajes/{id}/resenas/` | `{ resumen: { estrellas, cantidad, por_estrellas }, results: [{ estrellas, comentario, autor, creada_en, respuesta }] }` (paginado). La búsqueda trae `estrellas` y `cantidad_resenas` de cada garaje |
+| PUT | `reservas/{id}/resena/` | `{ estrellas: 1-5, comentario? }`: califica (o corrige) una estadía terminada, hasta 30 días después. La reserva trae `calificable` y `mis_estrellas` |
 | GET | `operacion/mis-deudas/` | Deudas pendientes del conductor (lista sin paginar) |
 | POST | `operacion/mis-deudas/{reserva_id}/pagar/` | `{ "canal": "app" }` → `{ init_point }`; vuelve con `external_reference=deuda:<reserva_id>` |
 

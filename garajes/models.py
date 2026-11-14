@@ -202,3 +202,30 @@ class Tarifa(models.Model):
         if self.modalidad != Modalidad.HORA:
             return self.precio_periodo
         return self.precio_por_minutos(math.ceil((fin - inicio).total_seconds() / 60))
+
+
+class Resena(models.Model):
+    """
+    Calificación de 1 a 5 estrellas (y un comentario opcional) que deja el conductor sobre una estadía terminada.
+    Una por reserva: así sólo opina quien estacionó de verdad. El admin del garaje puede responderla.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reserva = models.OneToOneField("reservas.Reserva", on_delete=models.CASCADE, related_name="resena")
+    garaje = models.ForeignKey(Garaje, on_delete=models.CASCADE, related_name="resenas")
+    conductor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="resenas")
+    estrellas = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+    comentario = models.TextField(max_length=500, blank=True, default="")
+    respuesta = models.TextField(max_length=500, blank=True, default="")  # del admin del garaje
+    respondida_en = models.DateTimeField(null=True, blank=True)
+    creada_en = models.DateTimeField(auto_now_add=True)
+    actualizada_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-creada_en"]
+        constraints = [
+            models.CheckConstraint(name="estrellas_1_a_5", condition=Q(estrellas__gte=1, estrellas__lte=5)),
+        ]
+
+    def __str__(self):
+        return f"{self.garaje} · {self.estrellas}★"

@@ -1,9 +1,9 @@
 package com.drivly.app.ui.reservar
 
-import android.graphics.Bitmap
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,6 +73,7 @@ import com.drivly.app.DrivlyApplication
 import com.drivly.app.data.api.Cotizacion
 import com.drivly.app.data.api.DrivlyApi
 import com.drivly.app.data.api.GarajeDisponible
+import com.drivly.app.data.api.PaginaResenas
 import com.drivly.app.data.api.PedidoCategoria
 import com.drivly.app.data.api.PedidoHold
 import com.drivly.app.data.api.PedidoVehiculo
@@ -79,6 +82,8 @@ import com.drivly.app.data.api.Vehiculo
 import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.data.descargarImagen
 import com.drivly.app.ui.ars
+import com.drivly.app.ui.components.Calificacion
+import com.drivly.app.ui.components.DialogoResenas
 import com.drivly.app.ui.components.EstadoChip
 import com.drivly.app.ui.components.ListaCercanos
 import com.drivly.app.ui.components.Tarjeta
@@ -89,9 +94,9 @@ import com.drivly.app.ui.iso
 import com.drivly.app.ui.periodo
 import com.drivly.app.ui.theme.DrivlyTheme
 import com.drivly.app.ui.theme.JetBrainsMono
-import java.time.OffsetDateTime
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.OffsetDateTime
 
 class ReservarViewModel(
     private val api: DrivlyApi,
@@ -121,8 +126,21 @@ class ReservarViewModel(
     var cercanos by mutableStateOf<List<GarajeDisponible>?>(null)
         private set
 
+    /** Opiniones del garaje: el resumen se carga al entrar; la lista se muestra al tocarlo. */
+    var opiniones by mutableStateOf<PaginaResenas?>(null)
+        private set
+    var errorOpiniones by mutableStateOf<String?>(null)
+        private set
+
     init {
         cargarVehiculos()
+        viewModelScope.launch {
+            try {
+                opiniones = api.resenas(garajeId)
+            } catch (e: Exception) {
+                errorOpiniones = e.comoErrorDrivly().message
+            }
+        }
     }
 
     private fun cargarVehiculos() = tarea {
@@ -232,6 +250,7 @@ fun ReservarScreen(
     val vm: ReservarViewModel = viewModel { ReservarViewModel(app.api, garajeId, inicio, fin, vehiculoId, modalidad) }
     val reserva = vm.reserva
     val volver = { vm.soltarLugar(alVolver) }
+    var verOpiniones by remember { mutableStateOf(false) }
 
     BackHandler(enabled = reserva != null, onBack = volver)
 
@@ -253,6 +272,13 @@ fun ReservarScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(direccion, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            vm.opiniones?.resumen?.takeIf { it.cantidad > 0 }?.let { resumen ->
+                TextButton(onClick = { verOpiniones = true }, contentPadding = PaddingValues(0.dp)) {
+                    Calificacion(resumen.estrellas, resumen.cantidad)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ver opiniones")
+                }
+            }
             Text(
                 if (esAbono(modalidad)) periodo(modalidad, inicio.toString(), fin.toString())
                 else "De ${hora(inicio.toString())} a ${hora(fin.toString())}",
@@ -292,6 +318,10 @@ fun ReservarScreen(
             }
             vm.cercanos?.let { ListaCercanos("Garajes cercanos con lugar en ese horario", it, alElegir = alCambiarGaraje) }
         }
+    }
+
+    if (verOpiniones) {
+        DialogoResenas(nombre, vm.opiniones?.results, vm.errorOpiniones) { verOpiniones = false }
     }
 
     vm.pagosCaidos?.let { mensaje ->

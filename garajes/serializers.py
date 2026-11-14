@@ -1,9 +1,10 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Avg, Count
 from rest_framework import serializers
 
 from cuentas.models import Rol, Usuario
 
-from .models import Garaje, Tarifa
+from .models import Garaje, Resena, Tarifa
 
 
 def _validar_con_modelo(instancia, attrs):
@@ -40,7 +41,27 @@ def url_foto(garaje):
     return garaje.foto.url if garaje.foto else None
 
 
-class GarajeSerializer(serializers.ModelSerializer):
+def calificacion(garaje):
+    """(promedio con un decimal o None, cantidad). Usa la anotación de la consulta si viene; si no, la calcula."""
+    if not hasattr(garaje, "cantidad_resenas"):
+        datos = garaje.resenas.aggregate(promedio=Avg("estrellas"), cantidad=Count("id"))
+        garaje.estrellas_promedio, garaje.cantidad_resenas = datos["promedio"], datos["cantidad"]
+    promedio = garaje.estrellas_promedio
+    return (round(float(promedio), 1) if promedio is not None else None), garaje.cantidad_resenas
+
+
+class _ConCalificacion(serializers.Serializer):
+    estrellas = serializers.SerializerMethodField()
+    cantidad_resenas = serializers.SerializerMethodField()
+
+    def get_estrellas(self, garaje):
+        return calificacion(garaje)[0]
+
+    def get_cantidad_resenas(self, garaje):
+        return calificacion(garaje)[1]
+
+
+class GarajeSerializer(_ConCalificacion, serializers.ModelSerializer):
     """Vista completa, para el admin del garaje y su playero."""
 
     tarifas = TarifaSerializer(many=True, read_only=True)
@@ -51,7 +72,7 @@ class GarajeSerializer(serializers.ModelSerializer):
         fields = [
             "id", "nombre", "cuit", "direccion", "lat", "lng",
             "capacidad", "cupo_abonos", "tolerancia_min", "salida_estimada_default_min",
-            "recargo_overstay", "foto", "activo", "tarifas", "creado_en",
+            "recargo_overstay", "foto", "estrellas", "cantidad_resenas", "activo", "tarifas", "creado_en",
         ]
         read_only_fields = ["id", "activo", "tarifas", "creado_en"]
 
@@ -70,7 +91,7 @@ class TarifaPublicaSerializer(serializers.ModelSerializer):
                   "precio_primera_hora", "tope_12h", "tope_24h", "precio_periodo"]
 
 
-class GarajePublicoSerializer(serializers.ModelSerializer):
+class GarajePublicoSerializer(_ConCalificacion, serializers.ModelSerializer):
     """Lo que ve el conductor: sin CUIT ni configuración interna."""
 
     tarifas = TarifaPublicaSerializer(many=True, read_only=True)
@@ -79,7 +100,8 @@ class GarajePublicoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Garaje
-        fields = ["id", "nombre", "direccion", "lat", "lng", "foto", "tolerancia_min", "tarifas", "distancia_m"]
+        fields = ["id", "nombre", "direccion", "lat", "lng", "foto", "estrellas", "cantidad_resenas", "tolerancia_min",
+                  "tarifas", "distancia_m"]
 
     def get_foto(self, garaje):
         return url_foto(garaje)
@@ -121,3 +143,29 @@ class PlayeroSerializer(serializers.ModelSerializer):
                 "Tiene reservas activas o una deuda pendiente como conductor. Pasalo a playero cuando las cierre."
             )
         return email
+
+
+class ResenaSerializer(serializers.ModelSerializer):
+    """Lo que ve cualquiera: el autor sólo con nombre e inicial del apellido."""
+
+    autor = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Resena
+        fields = ["id", "estrellas", "comentario", "autor", "creada_en", "respuesta", "respondida_en"]
+        read_only_fields = fields
+
+    def get_autor(self, resena):
+        partes = (resena.conductor.nombre or "").split()
+        if not partes:
+            return "Conductor de Drivly"
+        return partes[0] + (f" {partes[-1][0]}." if len(partes) > 1 else "")
+
+
+class PedidoResenaSerializer(serializers.Serializer):
+    estrellas = serializers.IntegerField(min_value=1, max_value=5)
+    comentario = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+
+
+class RespuestaResenaSerializer(serializers.Serializer):
+    respuesta = serializers.CharField(max_length=500, allow_blank=True)

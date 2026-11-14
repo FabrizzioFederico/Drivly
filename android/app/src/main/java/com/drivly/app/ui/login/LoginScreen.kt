@@ -83,6 +83,11 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 
 private val ROLES_DE_LA_APP = setOf("CONDUCTOR", "PLAYERO")
 
@@ -206,7 +211,14 @@ fun LoginScreen() {
                     },
                     enabled = !vm.cargando,
                     modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) { Text("Ingresar con Google") }
+                ) {
+                    // La "G" va siempre a color sobre un círculo blanco, como pide la marca de Google
+                    Box(Modifier.size(28.dp).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
+                        Image(painterResource(R.drawable.ic_google), contentDescription = null, Modifier.size(18.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text("Ingresar con Google")
+                }
                 Separador("o con tu email")
             }
 

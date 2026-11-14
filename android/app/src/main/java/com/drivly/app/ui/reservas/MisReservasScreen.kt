@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,10 +46,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.drivly.app.DrivlyApplication
 import com.drivly.app.data.api.Deuda
 import com.drivly.app.data.api.DrivlyApi
+import com.drivly.app.data.api.PedidoResena
 import com.drivly.app.data.api.Reserva
 import com.drivly.app.data.comoErrorDrivly
 import com.drivly.app.ui.ars
+import com.drivly.app.ui.components.DialogoCalificar
 import com.drivly.app.ui.components.EstadoChip
+import com.drivly.app.ui.components.Estrellas
 import com.drivly.app.ui.components.LocalEspacioBarra
 import com.drivly.app.ui.components.Tarjeta
 import com.drivly.app.ui.fechaHora
@@ -71,6 +76,35 @@ class MisReservasViewModel(private val api: DrivlyApi) : ViewModel() {
         private set
     var errorPago by mutableStateOf<String?>(null)
         private set
+    /** La reserva que se está calificando (abre el diálogo). */
+    var calificando by mutableStateOf<Reserva?>(null)
+        private set
+    var enviandoResena by mutableStateOf(false)
+        private set
+    var errorResena by mutableStateOf<String?>(null)
+        private set
+
+    fun abrirCalificacion(r: Reserva?) {
+        calificando = r
+        errorResena = null
+    }
+
+    fun calificar(estrellas: Int, comentario: String) {
+        val r = calificando ?: return
+        enviandoResena = true
+        errorResena = null
+        viewModelScope.launch {
+            try {
+                api.calificar(r.id, PedidoResena(estrellas, comentario.trim()))
+                reservas = reservas?.map { if (it.id == r.id) it.copy(misEstrellas = estrellas) else it }
+                calificando = null
+            } catch (e: Exception) {
+                errorResena = e.comoErrorDrivly().message
+            } finally {
+                enviandoResena = false
+            }
+        }
+    }
 
     fun cargar() {
         actualizando = true
@@ -138,10 +172,21 @@ fun MisReservasScreen(alAbrirTicket: (String) -> Unit) {
                             vm.pagarDeuda(d) { url -> CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(url)) }
                         }
                     }
-                    items(reservas, key = { it.id }) { r -> FilaReserva(r, alAbrirTicket) }
+                    items(reservas, key = { it.id }) { r -> FilaReserva(r, alAbrirTicket, alCalificar = { vm.abrirCalificacion(r) }) }
                 }
             }
         }
+    }
+
+    vm.calificando?.let { r ->
+        DialogoCalificar(
+            garaje = r.garaje?.nombre ?: "el garaje",
+            inicial = r.misEstrellas,
+            enviando = vm.enviandoResena,
+            error = vm.errorResena,
+            alEnviar = vm::calificar,
+            alCerrar = { vm.abrirCalificacion(null) },
+        )
     }
 }
 
@@ -173,7 +218,7 @@ private fun TarjetaDeuda(d: Deuda, error: String?, pagando: Boolean, alPagar: ()
 }
 
 @Composable
-private fun FilaReserva(r: Reserva, alAbrirTicket: (String) -> Unit) {
+private fun FilaReserva(r: Reserva, alAbrirTicket: (String) -> Unit, alCalificar: () -> Unit) {
     val conTicket = r.estado in CON_TICKET
     Tarjeta(Modifier.fillMaxWidth(), onClick = if (conTicket) ({ alAbrirTicket(r.id) }) else null) {
         ListItem(
@@ -181,8 +226,19 @@ private fun FilaReserva(r: Reserva, alAbrirTicket: (String) -> Unit) {
             overlineContent = { EstadoChip(estadoVisible(r)) },
             headlineContent = { Text(r.garaje?.nombre ?: "Reserva", style = MaterialTheme.typography.titleMedium) },
             supportingContent = {
-                Text("${periodo(r.modalidad, r.inicio, r.fin)} · ${r.patente} · ${ars(r.total)}",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column {
+                    Text("${periodo(r.modalidad, r.inicio, r.fin)} · ${r.patente} · ${ars(r.total)}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    when {
+                        r.misEstrellas != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Estrellas(r.misEstrellas)
+                            if (r.calificable) TextButton(onClick = alCalificar) { Text("Cambiar") }
+                        }
+                        r.calificable -> OutlinedButton(onClick = alCalificar, modifier = Modifier.padding(top = 8.dp)) {
+                            Text("Calificar el garaje")
+                        }
+                    }
+                }
             },
             trailingContent = if (conTicket) ({ Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Ver ticket") }) else null,
         )

@@ -143,6 +143,9 @@ data class GarajeDisponible(
     @SerialName("precio_desde") val precioDesde: String,
     @SerialName("precio_unidad") val precioUnidad: String,
     val foto: String? = null, // ruta relativa (/api/media/...) que carga el admin desde la web
+    /** Promedio de las reseñas (null si nadie calificó) y cuántas hay. */
+    val estrellas: Double? = null,
+    @SerialName("cantidad_resenas") val cantidadResenas: Int = 0,
 )
 
 @Serializable
@@ -178,7 +181,31 @@ data class Reserva(
     val reembolso: String? = null,
     /** Clientes sin reserva: con qué pagó al salir (EFECTIVO, MERCADO_PAGO, TRANSFERENCIA o vacío). */
     @SerialName("medio_cobro") val medioCobro: String = "",
+    /** Estadía terminada hace menos de 30 días: se puede calificar el garaje (o corregir la calificación). */
+    val calificable: Boolean = false,
+    @SerialName("mis_estrellas") val misEstrellas: Int? = null,
 )
+
+// ---------- Reseñas ----------
+
+@Serializable
+data class Resena(
+    val id: String,
+    val estrellas: Int,
+    val comentario: String = "",
+    val autor: String = "",
+    @SerialName("creada_en") val creadaEn: String,
+    val respuesta: String = "",
+)
+
+@Serializable
+data class ResumenResenas(val estrellas: Double? = null, val cantidad: Int = 0)
+
+@Serializable
+data class PaginaResenas(val resumen: ResumenResenas = ResumenResenas(), val results: List<Resena> = emptyList())
+
+@Serializable
+data class PedidoResena(val estrellas: Int, val comentario: String = "")
 
 // ---------- Caja del playero ----------
 

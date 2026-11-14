@@ -61,6 +61,16 @@ export const garajesService = {
     return (await client.put(`/garajes/${id}/foto/`, datos, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })).data;
   },
 
+  /** GET /garajes/{id}/resenas/?page -> { resumen: { estrellas, cantidad, por_estrellas }, results, next } */
+  async resenas(id, pagina = 1) {
+    return (await client.get(`/garajes/${id}/resenas/`, { params: { page: pagina } })).data;
+  },
+
+  /** POST /garajes/{id}/resenas/{resenaId}/responder/ { respuesta } (vacía la borra) */
+  async responderResena(id, resenaId, respuesta) {
+    return (await client.post(`/garajes/${id}/resenas/${resenaId}/responder/`, { respuesta })).data;
+  },
+
   /** DELETE /garajes/{id}/foto/ */
   async quitarFoto(id) {
     return (await client.delete(`/garajes/${id}/foto/`)).data;

@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -29,11 +30,15 @@ from reservas.serializers import GarajeDisponibleSerializer
 
 from .geo import caja_alrededor, distancia_m
 from .models import Garaje, Tarifa
+from .resenas import responder
 from .serializers import (
     GarajePublicoSerializer,
     GarajeSerializer,
     PlayeroSerializer,
+    ResenaSerializer,
+    RespuestaResenaSerializer,
     TarifaSerializer,
+    calificacion,
 )
 
 
@@ -61,7 +66,7 @@ class GarajeViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         # Lectura para todos los roles; la ocupación filtra su propio rol adentro.
-        if self.action not in ("list", "retrieve", "disponibles", "cercanos", "ocupacion"):
+        if self.action not in ("list", "retrieve", "disponibles", "cercanos", "ocupacion", "resenas"):
             return [IsAuthenticated(), EsAdminGaraje()]
         return super().get_permissions()
 
@@ -183,6 +188,35 @@ class GarajeViewSet(viewsets.ModelViewSet):
         respuesta = HttpResponse(contenido, content_type="application/pdf")
         respuesta["Content-Disposition"] = f'attachment; filename="{nombre}"'
         return respuesta
+
+    @action(detail=True, methods=["get"])
+    def resenas(self, request, pk=None):
+        """
+        GET /api/garajes/{id}/resenas/ — las reseñas, de la más nueva a la más vieja, con el promedio y cuántas hay
+        de cada cantidad de estrellas. La ve cualquier usuario (el conductor antes de reservar, el admin en el panel).
+        """
+        garaje = self.get_object()
+        resenas = garaje.resenas.select_related("conductor")
+        promedio, cantidad = calificacion(garaje)
+        por_estrellas = dict(resenas.values_list("estrellas").annotate(n=Count("id")))
+        pagina = self.paginate_queryset(resenas)
+        datos = ResenaSerializer(pagina if pagina is not None else resenas, many=True).data
+        resumen = {"estrellas": promedio, "cantidad": cantidad,
+                   "por_estrellas": {str(n): por_estrellas.get(n, 0) for n in range(5, 0, -1)}}
+        if pagina is not None:
+            respuesta = self.get_paginated_response(datos)
+            respuesta.data["resumen"] = resumen
+            return respuesta
+        return Response({"resumen": resumen, "results": datos})
+
+    @action(detail=True, methods=["post"], url_path=r"resenas/(?P<resena_id>[0-9a-f-]+)/responder")
+    def responder_resena(self, request, pk=None, resena_id=None):
+        """POST /api/garajes/{id}/resenas/{resena_id}/responder/ {respuesta} — sólo el admin; vacía la borra."""
+        garaje = self.get_object()
+        resena = get_object_or_404(garaje.resenas, pk=resena_id)
+        datos = RespuestaResenaSerializer(data=request.data)
+        datos.is_valid(raise_exception=True)
+        return Response(ResenaSerializer(responder(resena, datos.validated_data["respuesta"])).data)
 
     @action(detail=True, methods=["put", "delete"], parser_classes=[MultiPartParser])
     def foto(self, request, pk=None):
