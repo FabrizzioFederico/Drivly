@@ -6,7 +6,7 @@ from django.core import mail
 
 from operacion.models import MedioCobro
 from operacion.services import saldar_deuda
-from operacion.tests import con_deuda, crear_reserva, en, vehiculo  # noqa: F401  (fixture)
+from operacion.tests import con_deuda, crear_reserva, en, playero, vehiculo  # noqa: F401  (fixture)
 from pagos.models import Pago, ResultadoPago
 from reservas import services as reservas
 from reservas.models import EstadoReserva
@@ -297,3 +297,33 @@ def test_contacto_valida_y_limita_los_envios(cliente, contacto):
 def test_contacto_sin_destino_configurado(cliente, contacto, settings):
     settings.DRIVLY_CONTACTO_EMAIL = ""
     assert cliente().post(CONTACTO, DATOS_CONTACTO, format="json").status_code == 503
+
+
+def test_pide_calificar_un_rato_despues_de_salir(fcm, garaje, vehiculo, conductor, playero):  # noqa: F811
+    from datetime import timedelta
+
+    from django.utils import timezone
+    from freezegun import freeze_time
+
+    from garajes.models import Resena
+    from operacion.models import Movimiento, TipoMovimiento
+
+    enviados, _ = fcm
+    Dispositivo.objects.create(usuario=conductor, token="tok-1")
+
+    def salida(hace_min, estado=EstadoReserva.FINALIZADA):
+        r = crear_reserva(garaje, vehiculo, en(-hace_min - 120), en(-hace_min), estado)
+        with freeze_time(timezone.now() - timedelta(minutes=hace_min)):
+            Movimiento.objects.create(reserva=r, tipo=TipoMovimiento.EGRESO, registrado_por=playero)
+        return r
+
+    salio_hace_una_hora = salida(60)
+    salida(10)                                   # recién sale: todavía no
+    salida(60 * 8)                               # hace 8 h: ya no molesta
+    ya_califico = salida(90)
+    Resena.objects.create(reserva=ya_califico, garaje=garaje, conductor=conductor, estrellas=5)
+
+    assert services.pedir_calificaciones() == 1 and services.pedir_calificaciones() == 0  # una sola vez
+    m = enviados[0]
+    assert m["notification"]["title"] == f"¿Cómo te fue en {garaje.nombre}?"
+    assert m["data"] == {"tipo": "calificar", "reserva_id": str(salio_hace_una_hora.id)}

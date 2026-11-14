@@ -139,11 +139,22 @@ class MisReservasViewModel(private val api: DrivlyApi) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MisReservasScreen(alAbrirTicket: (String) -> Unit) {
+fun MisReservasScreen(
+    alAbrirTicket: (String) -> Unit,
+    /** Reserva a calificar al entrar (se tocó el push "¿Cómo te fue?"); se consume con alAbrirCalificacion. */
+    calificar: String? = null,
+    alAbrirCalificacion: () -> Unit = {},
+) {
     val app = LocalContext.current.applicationContext as DrivlyApplication
     val context = LocalContext.current
     val vm: MisReservasViewModel = viewModel { MisReservasViewModel(app.api) }
     LaunchedEffect(Unit) { vm.cargar() } // al volver a la pestaña se refresca (puede haber cambiado un estado)
+    LaunchedEffect(calificar, vm.reservas) {
+        val reservas = vm.reservas ?: return@LaunchedEffect
+        if (calificar == null) return@LaunchedEffect
+        reservas.firstOrNull { it.id == calificar && it.calificable }?.let(vm::abrirCalificacion)
+        alAbrirCalificacion()
+    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Mis reservas") }) }) { padding ->
         PullToRefreshBox(

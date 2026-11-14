@@ -221,6 +221,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "notificaciones.tasks.recordar_inicios",
         "schedule": 60.0 * 5,
     },
+    "pedir-calificaciones": {
+        "task": "notificaciones.tasks.pedir_calificaciones",
+        "schedule": 60.0 * 10,
+    },
     "avisar-fines": {
         "task": "notificaciones.tasks.avisar_fines",
         "schedule": 60.0 * 5,

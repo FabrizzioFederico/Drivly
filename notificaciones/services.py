@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 INICIO_PROXIMO = timedelta(minutes=30)
 FIN_PROXIMO = timedelta(minutes=15)
+# El pedido de calificación llega cuando ya no está manejando, y no al día siguiente
+CALIFICAR_DESDE = timedelta(minutes=30)
+CALIFICAR_HASTA = timedelta(hours=6)
 
 
 # ---------- Formato ----------
@@ -275,6 +278,31 @@ def avisar_fines() -> int:
             r.conductor, f"Tu reserva termina a las {hora(r.fin)}",
             f"Si salís más tarde de {r.garaje.nombre}, se cobra el tiempo extra con recargo.",
             {"tipo": "reserva", "reserva_id": r.id},
+        ))
+    return enviados
+
+
+def pedir_calificaciones() -> int:
+    """
+    Push "¿Cómo te fue en X?" entre 30 min y 6 h después de salir del garaje, una sola vez por reserva y sólo si
+    todavía no la calificó. Al tocarlo, la app abre Mis reservas con el diálogo de estrellas.
+    """
+    from garajes.resenas import ESTADOS_CALIFICABLES
+    from operacion.models import TipoMovimiento
+    from reservas.models import Reserva
+
+    ahora = timezone.now()
+    reservas = Reserva.objects.select_related("garaje", "conductor").filter(
+        estado__in=ESTADOS_CALIFICABLES, conductor__isnull=False, resena__isnull=True,
+        movimientos__tipo=TipoMovimiento.EGRESO,
+        movimientos__creado_en__range=(ahora - CALIFICAR_HASTA, ahora - CALIFICAR_DESDE),
+    ).distinct()
+    enviados = 0
+    for r in reservas:
+        enviados += una_vez(r.conductor, "pedir_resena", r.id, Canal.PUSH, lambda r=r: push.enviar(
+            r.conductor, f"¿Cómo te fue en {r.garaje.nombre}?",
+            "Calificalo con estrellas: tu opinión ayuda a otros conductores a elegir dónde estacionar.",
+            {"tipo": "calificar", "reserva_id": r.id},
         ))
     return enviados
 

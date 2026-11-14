@@ -148,9 +148,11 @@ drivly.firebaseSenderId=<número del remitente>
 
 Sin esos datos la app funciona igual, sin push. Al ingresar pide el permiso de notificaciones (Android 13+) y registra
 el token con `POST notificaciones/dispositivos/ { token }`; al cerrar sesión lo borra con `DELETE` y el mismo cuerpo.
-Al tocar un aviso se abre el ticket (`tipo=reserva`) o Mis reservas (`tipo=deuda`).
+Al tocar un aviso se abre el ticket (`tipo=reserva`), Mis reservas (`tipo=deuda`) o Mis reservas con el diálogo de
+estrellas de esa reserva (`tipo=calificar`).
 
-El backend manda: reserva confirmada, recordatorio 30 min antes del inicio, aviso 15 min antes del fin, deuda saldada,
+El backend manda: reserva confirmada, recordatorio 30 min antes del inicio, aviso 15 min antes del fin,
+"¿Cómo te fue?" entre 30 min y 6 h después de salir (si no calificó), deuda saldada,
 reembolso y los recordatorios de deuda. Necesita `FCM_PROJECT_ID` y `FCM_CREDENCIALES` (JSON de la cuenta de servicio)
 en el `.env`. Los comprobantes de pago, deuda y reembolso salen además por email.
 

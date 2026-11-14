@@ -29,3 +29,8 @@ def recordar_inicios():
 @shared_task(name="notificaciones.tasks.avisar_fines")
 def avisar_fines():
     return services.avisar_fines()
+
+
+@shared_task(name="notificaciones.tasks.pedir_calificaciones")
+def pedir_calificaciones():
+    return services.pedir_calificaciones()

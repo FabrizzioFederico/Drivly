@@ -154,6 +154,8 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
     val nav = rememberNavController()
     val deepLink by deepLinks.collectAsStateWithLifecycle()
     var mensaje by remember { mutableStateOf<String?>(null) }
+    // Push "¿Cómo te fue?" tocado: la reserva cuyo diálogo de estrellas se abre en Mis reservas
+    var calificarReserva by remember { mutableStateOf<String?>(null) }
     val actual by nav.currentBackStackEntryAsState()
     val rutaActual = actual?.destination?.route
     // Sólo en las pestañas principales; reservar, pagar y el ticket usan toda la pantalla
@@ -172,7 +174,13 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
                     alMostrarMensaje = { mensaje = null },
                 )
             }
-            composable(Rutas.RESERVAS) { MisReservasScreen(alAbrirTicket = { id -> nav.navigate(Rutas.ticket(id)) }) }
+            composable(Rutas.RESERVAS) {
+                MisReservasScreen(
+                    alAbrirTicket = { id -> nav.navigate(Rutas.ticket(id)) },
+                    calificar = calificarReserva,
+                    alAbrirCalificacion = { calificarReserva = null },
+                )
+            }
             composable(Rutas.PERFIL) { PerfilScreen() }
             composable(Rutas.RESERVAR) { e ->
                 val a = e.arguments!!
@@ -243,8 +251,15 @@ private fun AppLogueada(deepLinks: StateFlow<Uri?>, alConsumirDeepLink: () -> Un
         // Notificación push tocada: el ticket de la reserva, o Mis reservas si es una deuda
         if (uri.host == "aviso") {
             val id = uri.getQueryParameter("reserva_id")
-            if (uri.getQueryParameter("tipo") == "reserva" && id != null) nav.navigate(Rutas.ticket(id))
-            else nav.irAPestania(Rutas.RESERVAS)
+            when {
+                uri.getQueryParameter("tipo") == "reserva" && id != null -> nav.navigate(Rutas.ticket(id))
+                // "¿Cómo te fue?": Mis reservas con el diálogo de estrellas de esa reserva
+                uri.getQueryParameter("tipo") == "calificar" && id != null -> {
+                    calificarReserva = id
+                    nav.irAPestania(Rutas.RESERVAS)
+                }
+                else -> nav.irAPestania(Rutas.RESERVAS)
+            }
             alConsumirDeepLink()
             return@LaunchedEffect
         }
