@@ -1,6 +1,9 @@
 package com.drivly.app.ui.reservar
 
 import android.graphics.Bitmap
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabsIntent
@@ -111,6 +114,9 @@ class ReservarViewModel(
         private set
     var error by mutableStateOf<String?>(null)
         private set
+    /** Mercado Pago no respondió al pagar: el mensaje del backend, para ofrecer reintentar o ir al garaje. */
+    var pagosCaidos by mutableStateOf<String?>(null)
+        private set
     /** Al quedarse sin lugar: garajes cercanos con lugar en ese horario (regla 6). */
     var cercanos by mutableStateOf<List<GarajeDisponible>?>(null)
         private set
@@ -179,6 +185,10 @@ class ReservarViewModel(
         }
     }
 
+    fun cerrarAvisoPagos() {
+        pagosCaidos = null
+    }
+
     fun holdVencido() {
         reserva = null
         error = "Pasaron los 5 minutos y se liberó el lugar. Podés volver a retenerlo."
@@ -193,7 +203,8 @@ class ReservarViewModel(
                 bloque()
             } catch (e: Exception) {
                 val causa = e.comoErrorDrivly()
-                error = causa.message
+                if (causa.codigo == "PAGOS_NO_DISPONIBLES") pagosCaidos = causa.message
+                else error = causa.message
                 cercanos = causa.cercanos
             } finally {
                 ocupado = false
@@ -281,6 +292,33 @@ fun ReservarScreen(
             }
             vm.cercanos?.let { ListaCercanos("Garajes cercanos con lugar en ese horario", it, alElegir = alCambiarGaraje) }
         }
+    }
+
+    vm.pagosCaidos?.let { mensaje ->
+        val pagar = { vm.pagar { url -> CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(url)) } }
+        AlertDialog(
+            onDismissRequest = vm::cerrarAvisoPagos,
+            title = { Text("Mercado Pago no responde") },
+            text = { Text(mensaje) },
+            confirmButton = { TextButton(onClick = { vm.cerrarAvisoPagos(); pagar() }) { Text("Reintentar") } },
+            // Libera el lugar retenido: en el garaje entra como cliente sin reserva y paga ahí
+            dismissButton = {
+                TextButton(onClick = {
+                    vm.cerrarAvisoPagos()
+                    vm.soltarLugar { irAlGaraje(context, nombre, direccion); alVolver() }
+                }) { Text("Ir al garaje") }
+            },
+        )
+    }
+}
+
+/** Abre el mapa con la dirección del garaje (sin Google Maps instalado, en el navegador). */
+private fun irAlGaraje(context: Context, nombre: String, direccion: String) {
+    val destino = Uri.encode("$nombre, $direccion")
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=$destino")))
+    } catch (e: ActivityNotFoundException) {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$destino")))
     }
 }
 

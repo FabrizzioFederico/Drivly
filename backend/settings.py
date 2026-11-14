@@ -205,6 +205,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "pagos.tasks.reintentar_reembolsos",
         "schedule": 60.0 * 15,
     },
+    "conciliar-pagos": {
+        "task": "pagos.tasks.conciliar_pagos",
+        "schedule": 60.0 * 10,
+    },
     "recordar-deudas": {
         "task": "operacion.tasks.recordar_deudas",
         "schedule": 60.0 * 15,

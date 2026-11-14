@@ -61,6 +61,8 @@ class Reserva(models.Model):
     qr_token = models.CharField(max_length=128, unique=True, null=True, blank=True)
     confirmada_en = models.DateTimeField(null=True, blank=True)  # cuándo se acreditó el pago (gracia para cancelar)
     creada_en = models.DateTimeField(auto_now_add=True)
+    # Último checkout de Mercado Pago abierto: la conciliación busca pagos de estas reservas si el aviso no llegó
+    checkout_en = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-creada_en"]

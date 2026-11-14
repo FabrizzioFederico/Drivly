@@ -93,6 +93,8 @@ Las fechas van en ISO 8601 con zona horaria. Los errores de negocio responden `{
 (por ejemplo `SIN_CUPO` con `cercanos`, `GARAJE_SIN_MERCADO_PAGO`, `DEUDA_PENDIENTE`, `ESTADO_INVALIDO`,
 `DEUDA_PATENTE` con `deuda`, `SIN_LUGAR_PRESENCIAL` con `cercanos`):
 la app decide qué mostrar según `code`.
+Con `PAGOS_NO_DISPONIBLES` (503) Mercado Pago no respondió: la reserva sigue retenida y la app muestra un diálogo con
+"Reintentar" o "Ir al garaje" (libera el lugar y abre el mapa para entrar como cliente sin reserva).
 
 ## Pago con Mercado Pago (Checkout Pro mobile)
 

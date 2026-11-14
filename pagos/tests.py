@@ -16,7 +16,7 @@ from freezegun import freeze_time
 from garajes.models import Garaje, Tarifa
 from pagos import oauth, services
 from pagos.models import ConexionMP, EstadoOAuth, Pago, ResultadoPago
-from pagos.tasks import reintentar_reembolsos, renovar_conexiones_mp
+from pagos.tasks import conciliar_pagos, reintentar_reembolsos, renovar_conexiones_mp
 from reservas.models import EstadoReserva, Modalidad, Reserva
 from reservas.services import crear_hold
 from reservas.tests import manana, nuevo_conductor
@@ -29,18 +29,25 @@ class MPFalso:
         self.reembolsos = []
         self.falla_reembolso = False
         self.falla_consulta = False
+        self.falla_preferencia = None  # "red" (excepción) o un código HTTP de error
+        self.falla_busqueda = False
+        self.busquedas = []
         self.tokens = []
 
     def preference(self):
         return SimpleNamespace(create=self._crear_preferencia)
 
     def payment(self):
-        return SimpleNamespace(get=self._consultar)
+        return SimpleNamespace(get=self._consultar, search=self._buscar)
 
     def refund(self):
         return SimpleNamespace(create=self._reembolsar)
 
     def _crear_preferencia(self, datos):
+        if self.falla_preferencia == "red":
+            raise ConnectionError("MP no responde")
+        if self.falla_preferencia:
+            return {"status": self.falla_preferencia, "response": {"message": "internal_error"}}
         self.preferencias.append(datos)
         return {"status": 201, "response": {"id": "pref-1", "init_point": "https://mp/checkout"}}
 
@@ -48,6 +55,14 @@ class MPFalso:
         if self.falla_consulta:
             raise ConnectionError("MP no responde")
         return {"status": 200, "response": self.pagos[str(payment_id)]}
+
+    def _buscar(self, filtros):
+        self.busquedas.append(filtros)
+        if self.falla_busqueda:
+            raise ConnectionError("MP no responde")
+        resultados = [p for p in self.pagos.values()
+                      if p["external_reference"] == filtros["external_reference"] and p["status"] == filtros["status"]]
+        return {"status": 200, "response": {"results": resultados}}
 
     def _reembolsar(self, payment_id):
         if self.falla_reembolso:
@@ -529,3 +544,67 @@ def test_canal_invalido(cliente, garaje, mp):
     reserva = hold(garaje)
     r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/", {"canal": "ios"}, format="json")
     assert r.status_code == 400 and "canal" in r.data and mp.preferencias == []
+
+
+# ---------- Mercado Pago caído ----------
+
+@pytest.mark.parametrize("falla", ["red", 500])
+def test_mercado_pago_caido_avisa_claro_y_no_pierde_el_lugar(cliente, garaje, mp, falla):
+    reserva = hold(garaje)
+    mp.falla_preferencia = falla
+    r = cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/", {"canal": "app"}, format="json")
+    assert r.status_code == 503 and r.data["code"] == "PAGOS_NO_DISPONIBLES"
+    assert "pagás ahí" in r.data["detail"]
+    reserva.refresh_from_db()
+    assert reserva.estado == EstadoReserva.HOLD and reserva.checkout_en is None  # puede reintentar enseguida
+
+    mp.falla_preferencia = None
+    assert cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/").status_code == 200
+
+
+def test_conciliacion_recupera_un_pago_sin_webhook(cliente, garaje, mp):
+    reserva = hold(garaje)
+    cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/")
+    mp.aprobar(321, reserva)  # pagó, pero el aviso nunca llegó
+
+    assert conciliar_pagos() == 0 and mp.busquedas == []  # todavía puede llegar el webhook
+    with freeze_time(timezone.now() + timedelta(minutes=6)):
+        assert conciliar_pagos() == 1
+        assert conciliar_pagos() == 0  # ya registrado: no se vuelve a buscar
+    reserva.refresh_from_db()
+    assert reserva.estado == EstadoReserva.CONFIRMADA
+    assert Pago.objects.get().resultado == ResultadoPago.CONFIRMO_RESERVA
+    assert mp.busquedas[0] == {"external_reference": str(reserva.id), "status": "approved"}
+
+
+def test_conciliacion_reembolsa_si_el_lugar_ya_no_esta(cliente, garaje, mp):
+    reserva = hold(garaje)
+    cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/")
+    mp.aprobar(321, reserva)
+    with freeze_time(timezone.now() + timedelta(minutes=6)):
+        hold(garaje)  # el hold venció y otro conductor tomó el único lugar
+        assert conciliar_pagos() == 1
+    reserva.refresh_from_db()
+    assert reserva.estado == EstadoReserva.EXPIRADA and mp.reembolsos == ["321"]
+
+
+def test_conciliacion_con_mercado_pago_caido_reintenta_despues(cliente, garaje, mp, caplog):
+    reserva = hold(garaje)
+    cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/")
+    mp.aprobar(321, reserva)
+    mp.falla_busqueda = True
+    with freeze_time(timezone.now() + timedelta(minutes=6)):
+        assert conciliar_pagos() == 0
+        assert "no se pudo consultar" in caplog.text
+        mp.falla_busqueda = False
+        assert conciliar_pagos() == 1
+
+
+def test_conciliacion_ignora_checkouts_viejos_o_sin_pago(cliente, garaje, mp):
+    reserva = hold(garaje)
+    cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/")
+    with freeze_time(timezone.now() + timedelta(minutes=6)):
+        assert conciliar_pagos() == 0 and len(mp.busquedas) == 1  # abandonó el checkout: no hay pago
+    mp.aprobar(321, reserva)
+    with freeze_time(timezone.now() + timedelta(hours=25)):
+        assert conciliar_pagos() == 0 and len(mp.busquedas) == 1  # fuera de la ventana de 24 h

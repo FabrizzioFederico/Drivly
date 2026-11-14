@@ -35,6 +35,11 @@ los dos procesos de Celery: con Ctrl+C en cada terminal y volviendo a correr el 
 
 Sin Celery no se marcan los holds vencidos como expirados, no se reintentan los reembolsos ni los comprobantes, y no salen los recordatorios (de inicio, de fin y de deuda).
 
+Si Mercado Pago no responde al pagar, la API devuelve 503 `PAGOS_NO_DISPONIBLES` y la app ofrece reintentar o ir al
+garaje y pagar ahí (el lugar retenido se libera). Cada 10 minutos Celery concilia los pagos: busca en Mercado Pago
+los checkouts de las últimas 24 h sin pago registrado y procesa los aprobados como si hubiera llegado el webhook
+(confirma la reserva, salda la deuda o reembolsa si ya no hay lugar).
+
 ## Emails y notificaciones push
 
 Los comprobantes (con el QR de la reserva), la activación de cuentas, los recordatorios de deuda y el formulario

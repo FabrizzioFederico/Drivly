@@ -62,6 +62,7 @@ class Deuda(models.Model):
     transaccion_id = models.CharField(max_length=32, blank=True, default="")  # payment_id de Mercado Pago
     pagada_en = models.DateTimeField(null=True, blank=True)
     creada_en = models.DateTimeField(auto_now_add=True)
+    checkout_en = models.DateTimeField(null=True, blank=True)  # último cobro abierto en Mercado Pago (conciliación)
 
     class Meta:
         ordering = ["-creada_en"]

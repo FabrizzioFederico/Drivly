@@ -651,3 +651,23 @@ def test_caja_y_cierres_solo_del_propio_garaje(cliente, playero, otro_admin, adm
     cliente(playero).post(CERRAR, {"garaje": str(garaje.id), "efectivo_contado": "0"}, format="json")
     cierres = cliente(admin_garaje).get("/api/operacion/cierres/", {"garaje": str(garaje.id)}).data
     assert len(cierres) == 1 and cierres[0]["diferencia"] == "0.00"
+
+
+
+def test_conciliacion_salda_una_deuda_pagada_sin_aviso(cliente, conductor, garaje, vehiculo, mp):  # noqa: F811
+    from datetime import timedelta as _td
+
+    from django.utils import timezone as _tz
+    from freezegun import freeze_time as _freeze
+
+    from pagos.tasks import conciliar_pagos
+
+    conectar(garaje)
+    r = con_deuda(garaje, vehiculo)
+    assert cliente(conductor).post(f"{MIS_DEUDAS}{r.id}/pagar/", {"canal": "app"}, format="json").status_code == 200
+    deuda = Deuda.objects.get(reserva=r)
+    _pago_deuda(mp, 777, deuda)  # pagó, pero el aviso nunca llegó
+    with _freeze(_tz.now() + _td(minutes=6)):
+        assert conciliar_pagos() == 1
+    deuda.refresh_from_db()
+    assert deuda.estado == "PAGADA" and deuda.transaccion_id == "777"

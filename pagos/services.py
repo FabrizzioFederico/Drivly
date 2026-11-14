@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 import mercadopago
@@ -9,9 +10,9 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from operacion.models import Deuda, MedioCobro
+from operacion.models import Deuda, EstadoDeuda, MedioCobro
 from operacion.services import saldar_deuda
-from reservas.exceptions import EstadoInvalido, HoldVencidoSinCupo
+from reservas.exceptions import EstadoInvalido, HoldVencidoSinCupo, PagosNoDisponibles
 from reservas.models import EstadoReserva, Reserva
 from reservas.services import confirmar_pago
 
@@ -77,13 +78,30 @@ def _retorno(canal):
     }
 
 
+def _abrir_checkout(garaje, datos, que, detalle_error=None) -> str:
+    """
+    Crea la preferencia en la cuenta del garaje y devuelve init_point. Si Mercado Pago no responde (red, 5xx,
+    token que no se puede renovar) o la rechaza, avisa con PagosNoDisponibles (503) en vez de un error 500.
+    """
+    try:
+        sdk = _sdk(access_token_de(garaje))  # GarajeSinMercadoPago (409) si el garaje no conectó su cuenta
+        result = sdk.preference().create(datos)
+    except GarajeSinMercadoPago:
+        raise
+    except Exception as error:  # red caída, timeout, renovación del token fallida
+        logger.exception("Mercado Pago no respondió al crear %s: %s", que, error)
+        raise PagosNoDisponibles(detalle_error)
+    if result["status"] >= 400:
+        logger.error("Mercado Pago rechazó %s (HTTP %s): %s", que, result["status"], result["response"])
+        raise PagosNoDisponibles(detalle_error)
+    return result["response"]["init_point"]
+
+
 def crear_preferencia(reserva, canal=CANAL_WEB) -> str:
     """
     Crea una preferencia de Checkout Pro en la cuenta del garaje (POST /checkout/preferences con su token OAuth)
     y devuelve init_point. MP acredita el pago al garaje y le transfiere a Drivly el marketplace_fee.
     """
-    sdk = _sdk(access_token_de(reserva.garaje))  # GarajeSinMercadoPago (409) si el garaje no conectó su cuenta
-
     preference_data = {
         "items": [{
             "title": f"Reserva Drivly · {reserva.garaje.nombre}",
@@ -104,12 +122,10 @@ def crear_preferencia(reserva, canal=CANAL_WEB) -> str:
         "payment_methods": {"excluded_payment_types": [{"id": "ticket"}, {"id": "atm"}]},
     }
 
-    result = sdk.preference().create(preference_data)
-    if result["status"] >= 400:
-        raise RuntimeError(f"Error creando preferencia MP: {result['response']}")
-
+    init_point = _abrir_checkout(reserva.garaje, preference_data, f"la preferencia de la reserva {reserva.id}")
+    Reserva.objects.filter(pk=reserva.pk).update(checkout_en=timezone.now())
     # MP ya no tiene sandbox: las pruebas usan usuarios de prueba con el mismo init_point.
-    return result["response"]["init_point"]
+    return init_point
 
 
 def crear_cobro_deuda(deuda, canal=None) -> str:
@@ -119,8 +135,7 @@ def crear_cobro_deuda(deuda, canal=None) -> str:
     La deuda es del garaje (regla 4); la comisión se calcula sobre lo cobrado y sólo existe si el pago se concreta.
     """
     garaje = deuda.reserva.garaje
-    sdk = _sdk(access_token_de(garaje))
-    result = sdk.preference().create({
+    init_point = _abrir_checkout(garaje, {
         "items": [{
             "title": f"Exceso de permanencia · {garaje.nombre}",
             "quantity": 1,
@@ -133,10 +148,10 @@ def crear_cobro_deuda(deuda, canal=None) -> str:
         "notification_url": f"{settings.BACKEND_URL}/api/pagos/webhook/",
         "statement_descriptor": "DRIVLY",
         "payment_methods": {"excluded_payment_types": [{"id": "ticket"}, {"id": "atm"}]},
-    })
-    if result["status"] >= 400:
-        raise RuntimeError(f"Error creando el cobro de la deuda en MP: {result['response']}")
-    return result["response"]["init_point"]
+    }, f"el cobro de la deuda de la reserva {deuda.reserva_id}",
+        "Mercado Pago no responde en este momento. Probá de nuevo en unos minutos o pagale al garaje en persona.")
+    Deuda.objects.filter(pk=deuda.pk).update(checkout_en=timezone.now())
+    return init_point
 
 
 # ---------- Webhook ----------
@@ -313,3 +328,53 @@ def reintentar_reembolsos() -> int:
             _reembolsar_con_cuenta_del_garaje(pago, pago.reserva.garaje)
             reembolsados += pago.resultado == ResultadoPago.REEMBOLSADO
     return reembolsados
+
+
+# ---------- Conciliación: pagos cuyo aviso no llegó ----------
+
+# El webhook suele llegar en segundos: recién después de esta espera se le pregunta a Mercado Pago
+ESPERA_WEBHOOK = timedelta(minutes=5)
+# Un pago con tarjeta puede quedar en revisión y aprobarse horas después
+VENTANA_CONCILIACION = timedelta(hours=24)
+
+
+def _pagos_aprobados(garaje, referencia):
+    """Busca en la cuenta del garaje los pagos aprobados con ese external_reference (GET /v1/payments/search)."""
+    sdk = _sdk(access_token_de(garaje))
+    respuesta = sdk.payment().search({"external_reference": referencia, "status": "approved"})
+    if respuesta["status"] >= 400:
+        raise RuntimeError(f"Error buscando los pagos de {referencia}: {respuesta['response']}")
+    return [str(p["id"]) for p in respuesta["response"].get("results", [])]
+
+
+def conciliar_pagos() -> int:
+    """
+    Tarea periódica. Si Mercado Pago estuvo caído (o el webhook no llegó) puede haber pagos aprobados que Drivly no
+    registró: el conductor pagó y su reserva sigue retenida o venció. Para cada checkout abierto en las últimas 24 h
+    sin un pago aprobado registrado, busca el pago en Mercado Pago y lo procesa igual que el webhook (confirma la
+    reserva, salda la deuda o reembolsa si ya no hay lugar). Devuelve cuántos pagos recuperó.
+    """
+    ahora = timezone.now()
+    rango = (ahora - VENTANA_CONCILIACION, ahora - ESPERA_WEBHOOK)
+    reservas = (
+        Reserva.objects.filter(estado__in=[EstadoReserva.HOLD, EstadoReserva.EXPIRADA], checkout_en__range=rango)
+        .exclude(pagos__estado_mp="approved").select_related("garaje")
+    )
+    deudas = Deuda.objects.filter(estado=EstadoDeuda.PENDIENTE, checkout_en__range=rango).select_related("reserva__garaje")
+    pendientes = [(r.garaje, str(r.id)) for r in reservas]
+    pendientes += [(d.reserva.garaje, f"{PREFIJO_DEUDA}{d.reserva_id}") for d in deudas]
+
+    recuperados = 0
+    for garaje, referencia in pendientes:
+        try:
+            mp_user_id = ConexionMP.objects.filter(garaje=garaje).values_list("mp_user_id", flat=True).first()
+            for payment_id in _pagos_aprobados(garaje, referencia):
+                if Pago.objects.filter(payment_id=payment_id).exclude(resultado__in=RESULTADOS_A_PROCESAR).exists():
+                    continue  # ya procesado
+                if procesar_notificacion_pago(payment_id, mp_user_id) is not None:
+                    recuperados += 1
+                    logger.warning("Conciliación: se recuperó el pago %s (%s) sin aviso de Mercado Pago.",
+                                   payment_id, referencia)
+        except Exception:  # Mercado Pago sigue caído o el garaje se desconectó: se reintenta en la próxima vuelta
+            logger.exception("Conciliación: no se pudo consultar %s", referencia)
+    return recuperados

@@ -62,6 +62,15 @@ class GarajeSinMercadoPago(ReservaError):
     default_code = "GARAJE_SIN_MERCADO_PAGO"
 
 
+class PagosNoDisponibles(ReservaError):
+    """Mercado Pago no responde o rechazó la preferencia: el resto de Drivly sigue andando."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = ("Mercado Pago no responde en este momento. Probá de nuevo en unos minutos, "
+                      "o andá igual al garaje: si hay lugar, pagás ahí en efectivo o por transferencia.")
+    default_code = "PAGOS_NO_DISPONIBLES"
+
+
 class HoldVencidoSinCupo(ReservaError):
     default_detail = "Pasaron los 5 minutos y el lugar ya fue tomado. Se reintegra el pago."
     default_code = "HOLD_VENCIDO_SIN_CUPO"
