@@ -96,10 +96,12 @@ def _a_brevo(mensaje) -> dict:
 
 
 class BrevoEmailBackend(BaseEmailBackend):
-    def __init__(self, api_key=None, timeout=10, fail_silently=False, **kwargs):
-        super().__init__(fail_silently=fail_silently, **kwargs)
+    # Django 6.1 (MAILERS): cada backend maneja sus opciones, también fail_silently; a la base sólo le llega `alias`
+    def __init__(self, *, api_key=None, timeout=10, fail_silently=False, alias=None, **kwargs):
+        super().__init__(alias=alias, **kwargs)
         self.api_key = api_key
         self.timeout = timeout
+        self.fail_silently = fail_silently
 
     def send_messages(self, mensajes):
         enviados = 0

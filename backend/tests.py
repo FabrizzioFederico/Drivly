@@ -122,3 +122,21 @@ def test_brevo_contacto_con_responder_a_y_error_claro(monkeypatch):
                         lambda *a, **k: _RespuestaBrevo(400, '{"message": "sender not valid"}'))
     with pytest.raises(RuntimeError, match="sender not valid"):
         email_brevo.BrevoEmailBackend(api_key="k").send_messages([contacto])
+
+
+def test_brevo_configurado_en_mailers_envia_con_django(monkeypatch, settings):
+    """Como en Render: el backend lo crea Django desde MAILERS (send_mail, EmailMessage.send)."""
+    from django.core import mail
+
+    from backend import email_brevo
+
+    settings.MAILERS = {"default": {"BACKEND": "backend.email_brevo.BrevoEmailBackend",
+                                    "OPTIONS": {"api_key": "k", "timeout": 10}}}
+    enviados = []
+    monkeypatch.setattr(email_brevo.requests, "post", lambda url, json, timeout, headers: enviados.append(json) or _RespuestaBrevo())
+    assert mail.send_mail("Asunto", "Cuerpo", "Drivly <hola@drivly.com.ar>", ["ana@test.com"]) == 1
+    assert mail.EmailMessage("Contacto", "Hola", to=["equipo@drivly.com.ar"], reply_to=["x@y.com"]).send() == 1
+    assert [d["subject"] for d in enviados] == ["Asunto", "Contacto"]
+
+    monkeypatch.setattr(email_brevo.requests, "post", lambda *a, **k: _RespuestaBrevo(401, "Key not found"))
+    assert mail.send_mail("Asunto", "Cuerpo", None, ["ana@test.com"], fail_silently=True) == 0
