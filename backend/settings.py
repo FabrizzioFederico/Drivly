@@ -159,6 +159,8 @@ if env("EMAIL_HOST", default=""):
                 "use_tls": env.bool("EMAIL_USE_TLS", default=True),
                 "username": env("EMAIL_USER", default=""),
                 "password": env("EMAIL_PASSWORD", default=""),
+                # Sin límite, un servidor de email que no responde (o un puerto bloqueado) deja colgado el pedido
+                "timeout": env.int("EMAIL_TIMEOUT", default=10),
             },
         },
     }

@@ -334,7 +334,8 @@ function Contacto() {
     e.preventDefault();
     setEnviando(true); setResultado(null); setErrores({});
     try {
-      const { data } = await client.post('/notificaciones/contacto/', datos);
+      // Hasta 60 s: en el plan gratis de Render la API puede estar dormida y tarda en despertar
+      const { data } = await client.post('/notificaciones/contacto/', datos, { timeout: 60000 });
       setResultado({ ok: true, texto: data.detail });
       setDatos(VACIO);
     } catch (err) {
