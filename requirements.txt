@@ -14,3 +14,5 @@ reportlab==4.2.5     # informe de caja en PDF
 celery[redis]
 requests
 gunicorn
+whitenoise==6.12.0     # CSS y JS del admin de Django en producción
+cloudinary==1.47.0     # fotos subidas (backend/almacenamiento.py)

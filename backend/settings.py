@@ -50,6 +50,8 @@ AUTH_USER_MODEL = "cuentas.Usuario"
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # Sirve los archivos estáticos (CSS y JS del admin de Django) con DEBUG=False, sin nginx
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -89,11 +91,25 @@ USE_I18N = True
 USE_TZ = True  # la base guarda siempre UTC
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
-# Fotos de perfil. Bajo /api/ para que pasen por el mismo proxy que la API (Vite en desarrollo, ngrok).
-# En producción las sirve el almacenamiento (S3, nginx...), no Django.
+STATIC_ROOT = BASE_DIR / "staticfiles"  # lo llena `collectstatic` en el build de Render
+# Fotos de perfil y de los garajes. Bajo /api/ para que pasen por el mismo proxy que la API (Vite en desarrollo, ngrok).
 MEDIA_URL = "/api/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+# Con CLOUDINARY_URL las fotos van a Cloudinary (en Render el disco se borra en cada deploy); sin ella, a media/.
+CLOUDINARY_URL = env("CLOUDINARY_URL", default="").strip()
+if CLOUDINARY_URL and not CLOUDINARY_URL.startswith("cloudinary://"):
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(
+        "CLOUDINARY_URL tiene que ser la dirección completa: cloudinary://API_KEY:API_SECRET@CLOUD_NAME "
+        '(Cloudinary > Dashboard > "API environment variable"). No alcanza con la API Key o el API Secret solos.'
+    )
+STORAGES = {
+    "default": {"BACKEND": "backend.almacenamiento.CloudinaryStorage" if CLOUDINARY_URL
+                else "django.core.files.storage.FileSystemStorage"},
+    # Comprimidos (gzip/brotli) por WhiteNoise; sin manifest para que los tests no necesiten correr collectstatic
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
 
 # --- DRF + JWT -------------------------------------------------------------
 REST_FRAMEWORK = {

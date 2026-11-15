@@ -1,7 +1,7 @@
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.static import serve
 from rest_framework.routers import DefaultRouter
 
 from garajes.views import GarajeViewSet, TarifaViewSet
@@ -22,5 +22,6 @@ urlpatterns = [
     path("api/notificaciones/", include("notificaciones.urls")),
 ]
 
-# Sólo en desarrollo: en producción los archivos subidos no los sirve Django
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Fotos guardadas en media/ (desarrollo, o producción sin Cloudinary): las sirve Django también con DEBUG=False.
+# Con Cloudinary las URLs ya apuntan a su CDN y esta ruta no se usa.
+urlpatterns += [re_path(rf"^{settings.MEDIA_URL.lstrip('/')}(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT})]

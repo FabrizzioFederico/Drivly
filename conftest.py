@@ -64,6 +64,12 @@ def _aislar_de_firebase(settings):
     settings.FCM_CREDENCIALES = ""
 
 
+@pytest.fixture(autouse=True)
+def _aislar_de_cloudinary(settings):
+    """Aunque el .env tenga CLOUDINARY_URL, los tests guardan las fotos en disco (y nunca suben nada)."""
+    settings.STORAGES = {**settings.STORAGES, "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"}}
+
+
 @pytest.fixture
 def crear_usuario(db):
     def _crear(email, rol=Rol.CONDUCTOR, **extra):

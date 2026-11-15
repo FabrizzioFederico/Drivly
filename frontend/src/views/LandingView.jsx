@@ -375,12 +375,11 @@ function Contacto() {
 function Pie() {
   return (
     <Box component="footer" sx={{ borderTop: '1px solid var(--border)' }}>
-      <Container maxWidth="lg" sx={{ py: 4, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', justifyContent: 'space-between' }}>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
         <Stack spacing={0.5}>
           <Marca tamano={24} />
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>© {new Date().getFullYear()} Drivly · Trabajo Final de Carrera, Escuela Da Vinci</Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>© {new Date().getFullYear()} Drivly</Typography>
         </Stack>
-        <Link href={PANEL} sx={{ color: 'text.secondary', fontSize: 14 }}>Panel para garajes</Link>
       </Container>
     </Box>
   );
