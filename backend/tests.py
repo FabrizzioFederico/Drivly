@@ -52,3 +52,73 @@ def test_si_cloudinary_rechaza_la_subida_responde_503_claro(monkeypatch):
         CloudinaryStorage().save("fotos/x.jpg", ContentFile(b"jpeg", name="x.jpg"))
     assert error.value.status_code == 503
     CloudinaryStorage().delete("fotos/vieja.jpg")  # borrar una vieja que falla no rompe nada
+
+
+# ---------- Email por la API de Brevo ----------
+
+class _RespuestaBrevo:
+    def __init__(self, status_code=201, text='{"messageId": "<1@brevo>"}'):
+        self.status_code, self.text = status_code, text
+
+
+def _comprobante_con_qr():
+    from notificaciones.services import CID_QR, _EmailConImagenes
+
+    m = _EmailConImagenes(subject="Reserva confirmada", body="Tu reserva está confirmada.",
+                          from_email="Drivly <hola@drivly.com.ar>", to=["Ana <ana@test.com>"])
+    m.attach_alternative(f'<p>Mostrá este QR</p><img src="cid:{CID_QR}" alt="QR">', "text/html")
+    m.imagenes = [(CID_QR, b"\x89PNG-qr")]
+    return m
+
+
+def test_brevo_manda_el_comprobante_con_el_qr_subido_a_cloudinary(monkeypatch, settings):
+    from backend import email_brevo
+
+    settings.CLOUDINARY_URL = "cloudinary://1:x@demo"
+    enviados = []
+    monkeypatch.setattr(email_brevo.requests, "post",
+                        lambda url, json, timeout, headers: enviados.append((url, json, headers)) or _RespuestaBrevo())
+    import cloudinary.uploader
+    monkeypatch.setattr(cloudinary.uploader, "upload",
+                        lambda png, **op: {"secure_url": f"https://res.cloudinary.com/demo/{op['public_id']}.png"})
+
+    backend = email_brevo.BrevoEmailBackend(api_key="clave-de-prueba")
+    assert backend.send_messages([_comprobante_con_qr()]) == 1
+    url, datos, headers = enviados[0]
+    assert url == "https://api.brevo.com/v3/smtp/email" and headers["api-key"] == "clave-de-prueba"
+    assert datos["sender"] == {"email": "hola@drivly.com.ar", "name": "Drivly"}
+    assert datos["to"] == [{"email": "ana@test.com", "name": "Ana"}]
+    assert datos["textContent"].strip() == "Tu reserva está confirmada."
+    assert "cid:" not in datos["htmlContent"] and "https://res.cloudinary.com/demo/drivly/emails/" in datos["htmlContent"]
+    assert "attachment" not in datos
+
+
+def test_brevo_sin_cloudinary_manda_el_qr_adjunto(monkeypatch, settings):
+    from backend import email_brevo
+
+    settings.CLOUDINARY_URL = ""
+    enviados = []
+    monkeypatch.setattr(email_brevo.requests, "post", lambda url, json, timeout, headers: enviados.append(json) or _RespuestaBrevo())
+    email_brevo.BrevoEmailBackend(api_key="k").send_messages([_comprobante_con_qr()])
+    datos = enviados[0]
+    assert "<img" not in datos["htmlContent"]  # sin imagen rota
+    assert datos["attachment"][0]["name"] == "qr-drivly.png"
+
+
+def test_brevo_contacto_con_responder_a_y_error_claro(monkeypatch):
+    import pytest
+    from django.core.mail import EmailMessage
+
+    from backend import email_brevo
+
+    enviados = []
+    monkeypatch.setattr(email_brevo.requests, "post", lambda url, json, timeout, headers: enviados.append(json) or _RespuestaBrevo())
+    contacto = EmailMessage(subject="Un garaje quiere sumarse", body="Hola", from_email="Drivly <hola@drivly.com.ar>",
+                            to=["equipo@drivly.com.ar"], reply_to=["dueno@gmail.com"])
+    email_brevo.BrevoEmailBackend(api_key="k").send_messages([contacto])
+    assert enviados[0]["replyTo"] == {"email": "dueno@gmail.com"} and "htmlContent" not in enviados[0]
+
+    monkeypatch.setattr(email_brevo.requests, "post",
+                        lambda *a, **k: _RespuestaBrevo(400, '{"message": "sender not valid"}'))
+    with pytest.raises(RuntimeError, match="sender not valid"):
+        email_brevo.BrevoEmailBackend(api_key="k").send_messages([contacto])
