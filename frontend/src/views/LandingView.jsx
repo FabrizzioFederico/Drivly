@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Children, useEffect, useState } from 'react';
 import {
   Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Card, Container, Link, Stack, TextField, Typography,
 } from '@mui/material';
@@ -16,6 +16,8 @@ import TrendingUp from '@mui/icons-material/TrendingUp';
 import Undo from '@mui/icons-material/Undo';
 import client from '../api/client';
 import LogoDrivly from '../components/LogoDrivly';
+import { Capa } from '../components/Parallax';
+import Revelar from '../components/Revelar';
 
 const PANEL = '/panel';
 const ENLACES = [['#como-funciona', 'Cómo funciona'], ['#garajes', 'Para garajes'], ['#preguntas', 'Preguntas'], ['#contacto', 'Contacto']];
@@ -136,11 +138,36 @@ function Disenos() {
   );
 }
 
+/*
+ * Portada con parallax: de atrás hacia adelante, las líneas de un estacionamiento (lo más lejano y lento), dos luces
+ * de color, el texto y las capturas (las más rápidas).
+ */
 function Portada() {
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 7, md: 12 } }}>
-      <Box sx={{ display: 'grid', gap: { xs: 6, md: 8 }, gridTemplateColumns: { xs: '1fr', md: '1.1fr 0.9fr' }, alignItems: 'center' }}>
-        <Box>
+    <Box sx={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Las capas son más altas que la portada para no dejar ver sus bordes al moverse */}
+      <Capa profundidad={0.6} sx={{
+        inset: '-40% 0',
+        backgroundImage: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.045) 0 2px, transparent 2px 120px)',
+        maskImage: 'radial-gradient(ellipse 70% 55% at 50% 50%, #000 30%, transparent 75%)',
+        WebkitMaskImage: 'radial-gradient(ellipse 70% 55% at 50% 50%, #000 30%, transparent 75%)',
+      }} />
+      <Capa profundidad={0.45} sx={{
+        inset: '-40% 0',
+        background: 'radial-gradient(circle at 78% 38%, rgba(0,194,168,0.20), transparent 32%)',
+      }} />
+      <Capa profundidad={0.3} sx={{
+        inset: '-40% 0',
+        background: 'radial-gradient(circle at 12% 70%, rgba(0,194,168,0.10), transparent 28%)',
+      }} />
+      {/* Funde el fondo con la sección de abajo: sin esto se ve el corte de las capas */}
+      <Box aria-hidden sx={{ position: 'absolute', insetInline: 0, bottom: 0, height: 160, pointerEvents: 'none',
+        background: 'linear-gradient(to bottom, transparent, var(--bg))' }} />
+
+      <Container maxWidth="lg" sx={{ position: 'relative', py: { xs: 7, md: 12 } }}>
+        <Box sx={{ position: 'relative', display: 'grid', gap: { xs: 6, md: 8 }, gridTemplateColumns: { xs: '1fr', md: '1.1fr 0.9fr' }, alignItems: 'center' }}>
+          <Capa profundidad={0.22} decorativa={false} soloEscritorio>
+            <Revelar>
           <Typography sx={{ color: 'var(--accent)', fontWeight: 600, fontSize: 14, mb: 2 }}>Estacionamiento en Buenos Aires</Typography>
           <Typography component="h1" sx={{ fontSize: { xs: 36, md: 52 }, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
             Reservá tu cochera antes de salir
@@ -154,25 +181,36 @@ function Portada() {
             </Button>
             <Button variant="outlined" size="large" href="#garajes">Tengo un garaje</Button>
           </Stack>
+            </Revelar>
+          </Capa>
+          <Capa profundidad={-0.12} decorativa={false} soloEscritorio>
+            <Revelar retraso={200}><Disenos /></Revelar>
+          </Capa>
         </Box>
-        <Disenos />
-      </Box>
-    </Container>
+      </Container>
+    </Box>
   );
 }
 
 function Titulo({ id, sobre, titulo, detalle }) {
   return (
     <Box id={id} sx={{ scrollMarginTop: 88, mb: 5, maxWidth: 680 }}>
+      <Revelar>
       {sobre && <Typography sx={{ color: 'var(--accent)', fontWeight: 600, fontSize: 14, mb: 1 }}>{sobre}</Typography>}
       <Typography component="h2" sx={{ fontSize: { xs: 28, md: 36 }, fontWeight: 800, letterSpacing: '-0.01em' }}>{titulo}</Typography>
       {detalle && <Typography sx={{ color: 'text.secondary', mt: 1.5, fontSize: 17, lineHeight: 1.6 }}>{detalle}</Typography>}
+      </Revelar>
     </Box>
   );
 }
 
+/** Las tarjetas de una grilla aparecen una detrás de otra (escalonadas). */
 function Grilla({ columnas = 3, children }) {
-  return <Box sx={{ display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: `repeat(${columnas}, 1fr)` } }}>{children}</Box>;
+  return (
+    <Box sx={{ display: 'grid', gap: 2.5, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: `repeat(${columnas}, 1fr)` } }}>
+      {Children.map(children, (hijo, i) => <Revelar retraso={(i % columnas) * 120}>{hijo}</Revelar>)}
+    </Box>
+  );
 }
 
 function Item({ Icono, titulo, children, paso }) {
@@ -231,7 +269,8 @@ function Garajes() {
           <Item Icono={PhoneAndroid} titulo="Sin equipos especiales">El playero escanea el QR con su celular Android. No hace falta comprar nada.</Item>
           <Item Icono={Insights} titulo="Tu garaje en vivo">Ocupación por hora, reservas, excesos de permanencia y Excel desde el panel web.</Item>
         </Grilla>
-        <Card sx={{ p: 4, display: 'flex', flexDirection: 'column', gap: 2, border: '1px solid var(--accent)', bgcolor: 'var(--surface-1)' }}>
+        <Revelar retraso={240}>
+        <Card sx={{ p: 4, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 2, border: '1px solid var(--accent)', bgcolor: 'var(--surface-1)' }}>
           <Typography sx={{ color: 'text.secondary', fontWeight: 600 }}>Cuánto cuesta</Typography>
           <Typography sx={{ fontSize: 56, fontWeight: 800, lineHeight: 1 }}>10 %</Typography>
           <Typography sx={{ fontSize: 18, fontWeight: 600 }}>de cada reserva concretada</Typography>
@@ -242,6 +281,7 @@ function Garajes() {
           <Button variant="contained" size="large" href="#contacto">Quiero sumar mi garaje</Button>
           <Button variant="text" href={PANEL}>Ya tengo cuenta: ingresar</Button>
         </Card>
+        </Revelar>
       </Box>
     </Container>
   );
@@ -261,8 +301,9 @@ function Preguntas() {
     <Box sx={{ bgcolor: 'var(--surface-1)', borderBlock: '1px solid var(--border)' }}>
       <Container maxWidth="md" sx={{ py: { xs: 7, md: 10 } }}>
         <Titulo id="preguntas" sobre="Preguntas frecuentes" titulo="Lo que más nos preguntan" />
-        {PREGUNTAS.map(([p, r]) => (
-          <Accordion key={p} disableGutters sx={{ bgcolor: 'transparent', boxShadow: 'none', borderBottom: '1px solid var(--border)', '&::before': { display: 'none' } }}>
+        {PREGUNTAS.map(([p, r], i) => (
+          <Revelar key={p} retraso={i * 70} sx={{ height: 'auto' }}>
+          <Accordion disableGutters sx={{ bgcolor: 'transparent', boxShadow: 'none', borderBottom: '1px solid var(--border)', '&::before': { display: 'none' } }}>
             <AccordionSummary expandIcon={<ExpandMore />} sx={{ px: 0 }}>
               <Typography sx={{ fontWeight: 600, fontSize: 17 }}>{p}</Typography>
             </AccordionSummary>
@@ -270,6 +311,7 @@ function Preguntas() {
               <Typography sx={{ color: 'text.secondary', lineHeight: 1.6 }}>{r}</Typography>
             </AccordionDetails>
           </Accordion>
+          </Revelar>
         ))}
       </Container>
     </Box>
@@ -305,6 +347,7 @@ function Contacto() {
     <Container maxWidth="md" sx={{ py: { xs: 7, md: 10 } }}>
       <Titulo id="contacto" titulo="Sumá tu garaje"
         detalle="Dejanos tus datos y te escribimos para darte de alta. Configurás tarifas, capacidad y playeros desde el panel." />
+      <Revelar sx={{ height: 'auto' }}>
       <Card component="form" onSubmit={enviar} sx={{ p: { xs: 3, md: 4 } }}>
         <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
           <TextField label="Tu nombre" required {...campo('nombre')} />
@@ -324,6 +367,7 @@ function Contacto() {
           {enviando ? 'Enviando…' : 'Enviar'}
         </Button>
       </Card>
+      </Revelar>
     </Container>
   );
 }
