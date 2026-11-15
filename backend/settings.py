@@ -149,12 +149,14 @@ CORS_ALLOWED_ORIGINS = env.list(
 )
 
 # --- Email (Django 6.1: MAILERS reemplaza a EMAIL_BACKEND / EMAIL_*) --------
-if env("BREVO_API_KEY", default=""):
+# Al pegar la clave en Render a veces se cuelan espacios o comillas: Brevo responde "Key not found"
+BREVO_API_KEY = env("BREVO_API_KEY", default="").strip().strip("'\"").strip()
+if BREVO_API_KEY:
     # Producción en Render: por la API web de Brevo (HTTPS). El plan gratis de Render bloquea el SMTP saliente.
     MAILERS = {
         "default": {
             "BACKEND": "backend.email_brevo.BrevoEmailBackend",
-            "OPTIONS": {"api_key": env("BREVO_API_KEY"), "timeout": env.int("EMAIL_TIMEOUT", default=10)},
+            "OPTIONS": {"api_key": BREVO_API_KEY, "timeout": env.int("EMAIL_TIMEOUT", default=10)},
         },
     }
 elif env("EMAIL_HOST", default=""):
