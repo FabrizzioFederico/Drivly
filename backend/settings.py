@@ -180,6 +180,9 @@ else:
         "default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"},
     }
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Drivly <no-reply@drivly.local>")
+# Para los logs y el diagnóstico: por dónde salen los emails (nunca incluye claves)
+VIA_EMAIL = {"backend.email_brevo.BrevoEmailBackend": "API de Brevo",
+             "django.core.mail.backends.smtp.EmailBackend": "SMTP"}.get(MAILERS["default"]["BACKEND"], "consola (no se envían)")
 # A dónde llegan los "Sumá tu garaje" de la landing
 DRIVLY_CONTACTO_EMAIL = env("CONTACTO_EMAIL", default="")
 
@@ -272,3 +275,21 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+
+
+# --- Logs ------------------------------------------------------------------
+# Todo a la consola (es lo que muestran los Logs de Render). INFO para lo de Drivly: así se ve, por ejemplo,
+# por qué vía salió cada email; WARNING para el resto de las librerías.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"simple": {"format": "[{levelname}] {name}: {message}", "style": "{"}},
+    "handlers": {"consola": {"class": "logging.StreamHandler", "formatter": "simple"}},
+    "root": {"handlers": ["consola"], "level": "WARNING"},
+    "loggers": {
+        "django": {"handlers": ["consola"], "level": "INFO", "propagate": False},
+        **{app: {"handlers": ["consola"], "level": "INFO", "propagate": False}
+           for app in ["backend", "cuentas", "garajes", "reservas", "operacion", "pagos", "notificaciones",
+                       "integraciones", "reportes", "vehiculos"]},
+    },
+}

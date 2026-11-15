@@ -116,6 +116,11 @@ class BrevoEmailBackend(BaseEmailBackend):
                 if respuesta.status_code >= 400:
                     # El cuerpo explica el motivo (remitente sin verificar, IP no autorizada...); nunca trae la clave
                     raise RuntimeError(f"Brevo rechazó el email (HTTP {respuesta.status_code}): {respuesta.text[:300]}")
+                try:
+                    id_brevo = respuesta.json().get("messageId", "?")
+                except (AttributeError, ValueError):
+                    id_brevo = "?"
+                logger.info("Brevo aceptó el email «%s» (messageId %s)", mensaje.subject, id_brevo)
                 enviados += 1
             except Exception:
                 if not self.fail_silently:

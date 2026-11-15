@@ -103,4 +103,5 @@ class ContactoView(APIView):
             logger.exception("No se pudo enviar el contacto de la landing")
             return Response({"detail": "No pudimos enviar tu mensaje. Probá de nuevo más tarde."},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        logger.info("Contacto de «%s» enviado por: %s", d["garaje"], settings.VIA_EMAIL)
         return Response({"detail": "¡Gracias! Te escribimos en menos de 48 horas hábiles."}, status=status.HTTP_201_CREATED)
