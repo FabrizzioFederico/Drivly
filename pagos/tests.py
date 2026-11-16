@@ -608,23 +608,3 @@ def test_conciliacion_ignora_checkouts_viejos_o_sin_pago(cliente, garaje, mp):
     mp.aprobar(321, reserva)
     with freeze_time(timezone.now() + timedelta(hours=25)):
         assert conciliar_pagos() == 0 and len(mp.busquedas) == 1  # fuera de la ventana de 24 h
-
-
-@pytest.mark.parametrize("modo_prueba", [True, False])
-def test_token_de_prueba_al_conectar_si_esta_activado(cliente, garaje, token_mp, settings, modo_prueba):
-    settings.MERCADOPAGO_OAUTH_TEST_TOKEN = modo_prueba
-    ConexionMP.objects.all().delete()
-    url = cliente(garaje.admin).post("/api/pagos/oauth/conectar/", {"garaje": str(garaje.id)}, format="json").data["url"]
-    state = url.split("state=")[1].split("&")[0]
-    cliente().get(f"/api/pagos/oauth/callback/?code=TG-123&state={state}")
-    pedido = token_mp.pedidos[-1]
-    assert pedido["grant_type"] == "authorization_code"
-    assert (pedido.get("test_token") == "true") is modo_prueba
-
-
-def test_sin_comision_no_se_manda_marketplace_fee(cliente, garaje, mp, settings):
-    settings.DRIVLY_COMISION = Decimal("0")
-    reserva = hold(garaje)
-    assert cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/").status_code == 200
-    assert "marketplace_fee" not in mp.preferencias[-1]
-

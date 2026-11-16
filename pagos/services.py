@@ -51,12 +51,6 @@ def calcular_comision(monto: Decimal) -> Decimal:
     return comision
 
 
-def _comision(monto) -> dict:
-    """marketplace_fee de la preferencia. Con COMISION_DRIVLY=0 no se manda (Mercado Pago no recibe comisión)."""
-    comision = calcular_comision(monto)
-    return {"marketplace_fee": float(comision)} if comision > 0 else {}
-
-
 def _retorno(canal):
     """Cómo vuelve el conductor del checkout: back_urls y, si se puede, auto_return."""
     frontend_url = settings.FRONTEND_URL
@@ -117,7 +111,7 @@ def crear_preferencia(reserva, canal=CANAL_WEB) -> str:
         }],
         **_retorno(canal),
         "external_reference": str(reserva.id),
-        **_comision(reserva.monto),
+        "marketplace_fee": float(calcular_comision(reserva.monto)),
         "notification_url": f"{settings.BACKEND_URL}/api/pagos/webhook/",
         "statement_descriptor": "DRIVLY",
         # La preferencia vence junto con el hold: pasado ese momento MP no deja pagar.
@@ -150,7 +144,7 @@ def crear_cobro_deuda(deuda, canal=None) -> str:
         }],
         **(_retorno(canal) if canal else {}),
         "external_reference": f"{PREFIJO_DEUDA}{deuda.reserva_id}",
-        **_comision(deuda.monto),
+        "marketplace_fee": float(calcular_comision(deuda.monto)),
         "notification_url": f"{settings.BACKEND_URL}/api/pagos/webhook/",
         "statement_descriptor": "DRIVLY",
         "payment_methods": {"excluded_payment_types": [{"id": "ticket"}, {"id": "atm"}]},

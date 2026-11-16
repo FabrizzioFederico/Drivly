@@ -208,9 +208,6 @@ MERCADOPAGO_APP_ID = env("MP_APP_ID", default="")
 MERCADOPAGO_CLIENT_SECRET = env("MP_CLIENT_SECRET", default="")
 MERCADOPAGO_OAUTH_REDIRECT_URI = env("MP_OAUTH_REDIRECT_URI", default="http://localhost:8000/api/pagos/oauth/callback/")
 MERCADOPAGO_TOKEN_ENCRYPTION_KEY = env("MP_TOKEN_ENCRYPTION_KEY", default="")  # clave Fernet
-# True = al conectar un garaje se pide un token DE PRUEBA (test_token=true). Para demos con cuentas y tarjetas de prueba
-# cuando la aplicación de Drivly está en una cuenta real de Mercado Pago. En producción real: False.
-MERCADOPAGO_OAUTH_TEST_TOKEN = env.bool("MP_OAUTH_TEST_TOKEN", default=False)
 DRIVLY_COMISION = Decimal(env("COMISION_DRIVLY", default="0.10"))  # 10 % de cada reserva (sección 7.2)
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 # Deep link de la app Android del conductor: MP vuelve ahí al terminar el pago y la Custom Tab se cierra sola

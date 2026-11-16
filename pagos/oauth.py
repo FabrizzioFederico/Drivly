@@ -57,9 +57,6 @@ def _pedir_token(datos) -> dict:
     try:
         r = requests.post(URL_TOKEN, timeout=10, headers={"Accept": "application/json"}, data={
             "client_id": settings.MERCADOPAGO_APP_ID, "client_secret": settings.MERCADOPAGO_CLIENT_SECRET, **datos,
-            # Demo con la app en una cuenta real y garajes/compradores de prueba: Mercado Pago entrega un token de
-            # prueba al vendedor y el checkout acepta tarjetas de prueba (doc. OAuth: "test_token=true")
-            **({"test_token": "true"} if settings.MERCADOPAGO_OAUTH_TEST_TOKEN else {}),
         })
     except requests.RequestException as e:
         raise OAuthError(f"Mercado Pago no respondió: {e.__class__.__name__}") from e
