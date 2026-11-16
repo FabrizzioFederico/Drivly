@@ -621,3 +621,10 @@ def test_token_de_prueba_al_conectar_si_esta_activado(cliente, garaje, token_mp,
     assert pedido["grant_type"] == "authorization_code"
     assert (pedido.get("test_token") == "true") is modo_prueba
 
+
+def test_sin_comision_no_se_manda_marketplace_fee(cliente, garaje, mp, settings):
+    settings.DRIVLY_COMISION = Decimal("0")
+    reserva = hold(garaje)
+    assert cliente(reserva.conductor).post(f"/api/reservas/{reserva.id}/pagar/").status_code == 200
+    assert "marketplace_fee" not in mp.preferencias[-1]
+
