@@ -18,6 +18,12 @@ val local = Properties().apply {
 }
 fun local(clave: String, porDefecto: String = "") = local.getProperty(clave, porDefecto)
 
+// Firma de la versión de producción (Play Store): keystore.properties + drivly-release.jks, fuera del repo.
+// Sin esos archivos la versión release se compila sin firmar (sirve igual para probar que compila).
+val firma = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+
 android {
     namespace = "com.drivly.app"
     compileSdk {
@@ -40,8 +46,20 @@ android {
         buildConfigField("String", "FIREBASE_SENDER_ID", "\"${local("drivly.firebaseSenderId")}\"")
     }
 
+    signingConfigs {
+        if (firma.getProperty("storeFile") != null) {
+            create("produccion") {
+                storeFile = rootProject.file(firma.getProperty("storeFile"))
+                storePassword = firma.getProperty("storePassword")
+                keyAlias = firma.getProperty("keyAlias")
+                keyPassword = firma.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("produccion")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

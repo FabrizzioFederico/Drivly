@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -483,6 +484,7 @@ private fun SalidaEstimada(vm: PlayeroViewModel) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class) // FlowRow: las referencias de colores pasan a otra línea si no entran
 @Composable
 private fun Semaforo(o: Ocupacion?) {
     val forma = MaterialTheme.shapes.large

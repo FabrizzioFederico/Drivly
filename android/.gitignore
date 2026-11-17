@@ -16,3 +16,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Firma de la versión de producción: nunca al repo
+keystore.properties
+*.jks
+*.keystore
